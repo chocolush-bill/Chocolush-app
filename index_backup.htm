@@ -1,0 +1,1107 @@
+o
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chocolush - Billing System</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Poppins', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #4b2c20; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #b45309; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // YOUR GOOGLE SCRIPT URL
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykxtsPKsTNZwWFXSxy22RSDdWVxCwwhX-luSyjv51R26ow1mKuIqA0XiQTRr3mrA-YFA/exec";
+
+        // Simple Icons
+        const Icon = ({ type, className = "w-5 h-5" }) => {
+            const icons = {
+                plus: "M12 4v16m8-8H4",
+                minus: "M20 12H4",
+                trash: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16",
+                edit: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z",
+                x: "M6 18L18 6M6 6l12 12",
+                check: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
+                clock: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
+                eye: "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z",
+                share: "M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z",
+                dollar: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+                cart: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
+                users: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
+                package: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+                trend: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
+                building: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
+                calendar: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
+            };
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icons[type]} />
+                </svg>
+            );
+        };
+
+        // Utility functions
+        const formatCurrency = (amount) => `₹${amount.toFixed(2)}`;
+        const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const generateBillNumber = () => {
+            const date = new Date();
+            const year = date.getFullYear().toString().substr(-2);
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            return `CHO${year}${month}${random}`;
+        };
+
+        const App = () => {
+            const [tab, setTab] = useState('billing');
+            const [customers, setCustomers] = useState([]);
+            const [products, setProducts] = useState([]);
+            const [transactions, setTransactions] = useState([]);
+            const [bill, setBill] = useState({ items: [], discount: 0, discountType: 'percentage' });
+            const [selectedCustomer, setSelectedCustomer] = useState(null);
+            const [loading, setLoading] = useState(true);
+            
+            // Modals
+            const [showCustomerModal, setShowCustomerModal] = useState(false);
+            const [showProductModal, setShowProductModal] = useState(false);
+            const [showBillPreview, setShowBillPreview] = useState(false);
+            const [showPaymentModal, setShowPaymentModal] = useState(false);
+            const [showDetailsModal, setShowDetailsModal] = useState(false);
+            const [showAccountsModal, setShowAccountsModal] = useState(false);
+            
+            const [editingCustomer, setEditingCustomer] = useState(null);
+            const [editingProduct, setEditingProduct] = useState(null);
+            const [selectedTransaction, setSelectedTransaction] = useState(null);
+            const [paymentAmount, setPaymentAmount] = useState('');
+
+            useEffect(() => {
+                const loadData = async () => {
+                    try {
+                        const savedCustomers = localStorage.getItem('chocolush_customers');
+                        if (savedCustomers) {
+                            setCustomers(JSON.parse(savedCustomers));
+                        } else {
+                            const defaultCustomers = [
+                                { id: generateId(), name: 'Mr. Bake', phone: '', email: '', address: '' },
+                                { id: generateId(), name: 'Others', phone: '', email: '', address: '' }
+                            ];
+                            setCustomers(defaultCustomers);
+                            localStorage.setItem('chocolush_customers', JSON.stringify(defaultCustomers));
+                        }
+
+                        const savedProducts = localStorage.getItem('chocolush_products');
+                        if (savedProducts) {
+                            setProducts(JSON.parse(savedProducts));
+                        } else {
+                            const defaultProducts = [
+                                { id: generateId(), code: 'KC01', name: 'Big Kunafa Chocolate', price: 250 },
+                                { id: generateId(), code: 'KC02', name: 'Med. Kunafa Chocolate', price: 125 },
+                                { id: generateId(), code: 'KC03', name: 'Mini Kunafa Bites', price: 40 }
+                            ];
+                            setProducts(defaultProducts);
+                            localStorage.setItem('chocolush_products', JSON.stringify(defaultProducts));
+                        }
+
+                        const savedTransactions = localStorage.getItem('chocolush_transactions');
+                        if (savedTransactions) {
+                            setTransactions(JSON.parse(savedTransactions));
+                        }
+                    } catch (error) {
+                        console.error('Error loading data:', error);
+                    }
+                    setLoading(false);
+                };
+                loadData();
+            }, []);
+
+            // GOOGLE SHEET SYNC LOGIC
+            const syncToSheet = async (t) => {
+                const itemsStr = t.items.map(i => `${i.product.name} (x${i.quantity})`).join(", ");
+                const payload = {
+                    BillNo: t.billNumber,
+                    CustomerName: t.customerName,
+                    Items: itemsStr,
+                    Total: t.total,
+                    Paid: t.paidAmount,
+                    Unpaid: t.remainingAmount,
+                    Date: new Date(t.date).toLocaleString('en-IN')
+                };
+                try {
+                    await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } catch (e) { console.error("Sync error", e); }
+            };
+
+            const saveCustomers = (data) => {
+                setCustomers(data);
+                localStorage.setItem('chocolush_customers', JSON.stringify(data));
+            };
+
+            const saveProducts = (data) => {
+                setProducts(data);
+                localStorage.setItem('chocolush_products', JSON.stringify(data));
+            };
+
+            const saveTransactions = (data) => {
+                setTransactions(data);
+                localStorage.setItem('chocolush_transactions', JSON.stringify(data));
+            };
+
+            const addCustomer = (customer) => {
+                const newCustomer = { ...customer, id: generateId() };
+                saveCustomers([...customers, newCustomer]);
+                setShowCustomerModal(false);
+                setEditingCustomer(null);
+            };
+
+            const updateCustomer = (customer) => {
+                saveCustomers(customers.map(c => c.id === customer.id ? customer : c));
+                setShowCustomerModal(false);
+                setEditingCustomer(null);
+            };
+
+            const deleteCustomer = (id) => {
+                if (!window.confirm('Delete this customer?')) return;
+                saveCustomers(customers.filter(c => c.id !== id));
+            };
+
+            const addProduct = (product) => {
+                const newProduct = { ...product, id: generateId() };
+                saveProducts([...products, newProduct]);
+                setShowProductModal(false);
+                setEditingProduct(null);
+            };
+
+            const updateProduct = (product) => {
+                saveProducts(products.map(p => p.id === product.id ? product : p));
+                setShowProductModal(false);
+                setEditingProduct(null);
+            };
+
+            const deleteProduct = (id) => {
+                if (!window.confirm('Delete this product?')) return;
+                saveProducts(products.filter(p => p.id !== id));
+            };
+
+            const addToBill = (product) => {
+                const existing = bill.items.find(item => item.product.id === product.id);
+                if (existing) {
+                    setBill({
+                        ...bill,
+                        items: bill.items.map(item =>
+                            item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+                        )
+                    });
+                } else {
+                    setBill({ ...bill, items: [...bill.items, { product, quantity: 1 }] });
+                }
+            };
+
+            const updateQuantity = (productId, quantity) => {
+                if (quantity < 1) {
+                    setBill({ ...bill, items: bill.items.filter(item => item.product.id !== productId) });
+                } else {
+                    setBill({
+                        ...bill,
+                        items: bill.items.map(item =>
+                            item.product.id === productId ? { ...item, quantity } : item
+                        )
+                    });
+                }
+            };
+
+            const calculateBill = () => {
+                const subtotal = bill.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+                const discount = bill.discountType === 'percentage' ? (subtotal * bill.discount) / 100 : bill.discount;
+                const total = subtotal - discount;
+                return { subtotal, discount, total };
+            };
+
+            const completeBill = (isPaid) => {
+                if (!selectedCustomer || bill.items.length === 0) return;
+
+                const { subtotal, discount, total } = calculateBill();
+                const transaction = {
+                    id: generateId(),
+                    billNumber: generateBillNumber(),
+                    customerId: selectedCustomer.id,
+                    customerName: selectedCustomer.name,
+                    customerPhone: selectedCustomer.phone,
+                    items: bill.items,
+                    subtotal,
+                    discount,
+                    total,
+                    isPaid,
+                    paidAmount: isPaid ? total : 0,
+                    remainingAmount: isPaid ? 0 : total,
+                    date: new Date().toISOString(),
+                    payments: isPaid ? [{ amount: total, date: new Date().toISOString(), method: 'Full Payment' }] : []
+                };
+
+                const newList = [...transactions, transaction];
+                saveTransactions(newList);
+                setSelectedTransaction(transaction);
+                // Add this inside the completeBill function in your HTML
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyqafYeFD5Egz0E1MZE9X63mZvuISSH29XPujFsHHrh0rW0CJvmvdpL3cfnq9iP6OlU3Q/exec";
+
+fetch(WEB_APP_URL, {
+    method: 'POST',
+    mode: 'no-cors', // Important for Google Apps Script
+    cache: 'no-cache',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(transaction)
+})
+.then(() => console.log("Data sent to Google Sheet"))
+.catch(err => console.error("Error sending to sheet:", err));
+setSelectedTransaction(transaction); // Loads the data into the preview window
+
+                setShowBillPreview(true);
+                syncToSheet(transaction);
+            };
+
+            const clearBill = () => {
+                setBill({ items: [], discount: 0, discountType: 'percentage' });
+                setSelectedCustomer(null);
+                setShowBillPreview(false);
+            };
+
+            const addPayment = () => {
+                if (!selectedTransaction || !paymentAmount || parseFloat(paymentAmount) <= 0) return;
+                const amount = parseFloat(paymentAmount);
+                if (amount > selectedTransaction.remainingAmount) {
+                    alert('Payment exceeds remaining amount!');
+                    return;
+                }
+
+                const updated = transactions.map(t => {
+                    if (t.id === selectedTransaction.id) {
+                        const newPaidAmount = t.paidAmount + amount;
+                        const newRemaining = t.total - newPaidAmount;
+                        const updatedTx = {
+                            ...t,
+                            paidAmount: newPaidAmount,
+                            remainingAmount: newRemaining,
+                            isPaid: newRemaining <= 0,
+                            payments: [...(t.payments || []), { amount, date: new Date().toISOString(), method: 'Partial Payment' }]
+                        };
+                        syncToSheet(updatedTx);
+                        return updatedTx;
+                    }
+                    return t;
+                });
+
+                saveTransactions(updated);
+                setSelectedTransaction(updated.find(t => t.id === selectedTransaction.id));
+                setShowPaymentModal(false);
+                setPaymentAmount('');
+            };
+
+            const togglePaymentStatus = (id) => {
+                const updated = transactions.map(t => {
+                    if (t.id === id) {
+                        let updatedTx;
+                        if (t.isPaid) {
+                            updatedTx = { ...t, isPaid: false, paidAmount: 0, remainingAmount: t.total, payments: [] };
+                        } else {
+                            updatedTx = {
+                                ...t,
+                                isPaid: true,
+                                paidAmount: t.total,
+                                remainingAmount: 0,
+                                payments: [{ amount: t.total, date: new Date().toISOString(), method: 'Full Payment' }]
+                            };
+                        }
+                        syncToSheet(updatedTx);
+                        return updatedTx;
+                    }
+                    return t;
+                });
+                saveTransactions(updated);
+                if (selectedTransaction && selectedTransaction.id === id) {
+                    setSelectedTransaction(updated.find(t => t.id === id));
+                }
+            };
+
+            const deleteTransaction = (id) => {
+                if (!window.confirm('Delete this transaction? This cannot be undone!')) return;
+                saveTransactions(transactions.filter(t => t.id !== id));
+                setShowDetailsModal(false);
+                setSelectedTransaction(null);
+            };
+
+            const generateBillText = (t) => {
+                let text = `\n----------------------------------------\n         CHOCOLUSH          \n     Premium Kunafa Chocolates     \n----------------------------------------\n\nBill No: ${t.billNumber}\nDate: ${new Date(t.date).toLocaleString('en-IN')}\nCustomer: ${t.customerName}\n`;
+                if (t.customerPhone) text += `Phone: ${t.customerPhone}\n`;
+                text += `\n----------------------------------------\nITEMS:\n----------------------------------------\n`;
+                t.items.forEach((item, i) => {
+                    text += `${i + 1}. ${item.product.name}\n   ${item.quantity} x Rs.${item.product.price.toFixed(2)} = Rs.${(item.quantity * item.product.price).toFixed(2)}\n`;
+                });
+                text += `\n----------------------------------------\nSubtotal:  Rs.${t.subtotal.toFixed(2)}\n`;
+                if (t.discount > 0) text += `Discount:  -Rs.${t.discount.toFixed(2)}\n`;
+                text += `----------------------------------------\nTOTAL:     Rs.${t.total.toFixed(2)}\n----------------------------------------\n\n`;
+                if (t.isPaid) {
+                    text += `Payment Status: PAID\n`;
+                } else if (t.paidAmount > 0) {
+                    text += `Payment Status: PARTIAL\nPaid Amount:    Rs.${t.paidAmount.toFixed(2)}\nRemaining:      Rs.${t.remainingAmount.toFixed(2)}\n`;
+                } else {
+                    text += `Payment Status: PAY LATER\nAmount Due:     Rs.${t.total.toFixed(2)}\n`;
+                }
+                text += `\n----------------------------------------\nThank you for your business!\nVisit us again!\n----------------------------------------\n`;
+                return text;
+            };
+
+
+            const shareBill = (t) => {
+                const text = encodeURIComponent(generateBillText(t));
+                window.open(`https://wa.me/?text=${text}`, '_blank');
+            };
+
+            const copyBill = (t) => {
+                navigator.clipboard.writeText(generateBillText(t)).then(() => alert('Copied!'));
+            };
+
+            const stats = {
+                totalSales: transactions.reduce((sum, t) => sum + t.total, 0),
+                paidAmount: transactions.reduce((sum, t) => sum + t.paidAmount, 0),
+                unpaidAmount: transactions.reduce((sum, t) => sum + t.remainingAmount, 0),
+                transactionCount: transactions.length
+            };
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-[#f1f8e9] via-[#efebe9] to-[#dcedc8] flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-stone-600 border-t-transparent"></div>
+                            <p className="mt-4 text-stone-800 font-semibold">Loading Chocolush...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-[#f1f8e9] via-[#efebe9] to-[#dcedc8] p-4 sm:p-6">
+                    {/* Header */}
+                    <div className="max-w-7xl mx-auto mb-6">
+                        <div className="bg-gradient-to-r from-[#4b2c20] to-[#5d4037] rounded-2xl shadow-2xl p-6 text-white relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-32 -mt-32"></div>
+                            <div className="relative flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                    <Icon type="cart" className="w-8 h-8" />
+                                    <div>
+                                        <h1 className="text-3xl font-bold">Chocolush</h1>
+                                        <p className="text-stone-100">Premium Kunafa Chocolate Billing</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowAccountsModal(true)}
+                                    className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl font-semibold flex items-center gap-2 transition"
+                                >
+                                    <Icon type="building" /> Accounts
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="max-w-7xl mx-auto mb-6 flex bg-white/50 backdrop-blur-md rounded-2xl p-2 gap-2 shadow-lg border border-white/50">
+                        {['billing', 'customers', 'products', 'reports'].map((t) => (
+                            <button
+                                key={t}
+                                onClick={() => setTab(t)}
+                                className={`flex-1 py-3 rounded-xl font-bold capitalize transition-all duration-300 ${
+                                    tab === t 
+                                    ? 'bg-[#8bc34a] text-white shadow-lg transform scale-[1.02]' 
+                                    : 'text-stone-600 hover:bg-white/50'
+                                }`}
+                            >
+                                {t}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Main Content Areas - Restored Exactly From Original */}
+                    <div className="max-w-7xl mx-auto">
+                        {tab === 'billing' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 fade-in">
+                                {/* Billing Logic (Select Customer, Items, Bill Summary) Restored From Original File */}
+                                <div className="lg:col-span-2 space-y-6">
+                                    <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/50">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h2 className="text-xl font-bold text-stone-800 flex items-center gap-2">
+                                                <Icon type="users" className="text-stone-400" />
+                                                Select Customer
+                                            </h2>
+                                            <button 
+                                                onClick={() => { setEditingCustomer(null); setShowCustomerModal(true); }}
+                                                className="text-[#8bc34a] hover:bg-[#8bc34a]/10 p-2 rounded-full transition"
+                                            >
+                                                <Icon type="plus" />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                            {customers.map(customer => (
+                                                <button
+                                                    key={customer.id}
+                                                    onClick={() => setSelectedCustomer(customer)}
+                                                    className={`p-4 rounded-xl border-2 transition-all duration-300 text-left relative group ${
+                                                        selectedCustomer?.id === customer.id
+                                                        ? 'border-[#4b2c20] bg-stone-50'
+                                                        : 'border-white bg-white/50 hover:border-stone-200'
+                                                    }`}
+                                                >
+                                                    <p className="font-bold text-stone-800 line-clamp-1">{customer.name}</p>
+                                                    <p className="text-xs text-stone-400">{customer.phone || 'No phone'}</p>
+                                                    {selectedCustomer?.id === customer.id && (
+                                                        <div className="absolute -top-2 -right-2 bg-[#4b2c20] text-white rounded-full p-1 shadow-lg">
+                                                            <Icon type="check" className="w-3 h-3" />
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/50">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h2 className="text-xl font-bold text-stone-800 flex items-center gap-2">
+                                                <Icon type="package" className="text-stone-400" />
+                                                Products
+                                            </h2>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => { setEditingProduct(null); setShowProductModal(true); }}
+                                                    className="text-[#8bc34a] hover:bg-[#8bc34a]/10 p-2 rounded-full transition"
+                                                >
+                                                    <Icon type="plus" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            {products.map(product => (
+                                                <button
+                                                    key={product.id}
+                                                    onClick={() => addToBill(product)}
+                                                    className="p-4 bg-white rounded-xl border-2 border-transparent hover:border-[#4b2c20] shadow-sm transition-all duration-300 group text-left"
+                                                >
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <p className="font-bold text-stone-800">{product.name}</p>
+                                                            <p className="text-xs text-stone-400">Code: {product.code}</p>
+                                                        </div>
+                                                        <p className="font-bold text-[#4b2c20]">{formatCurrency(product.price)}</p>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="bg-[#4b2c20] rounded-2xl shadow-xl p-6 text-white sticky top-6">
+                                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                                            <Icon type="cart" />
+                                            Current Bill
+                                        </h2>
+                                        
+                                        <div className="space-y-4 mb-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                            {bill.items.length === 0 ? (
+                                                <div className="text-center py-8 opacity-50">
+                                                    <Icon type="cart" className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                                                    <p>Cart is empty</p>
+                                                </div>
+                                            ) : (
+                                                bill.items.map((item, index) => (
+                                                    <div key={index} className="flex flex-col gap-2 p-3 bg-white/10 rounded-xl">
+                                                        <div className="flex justify-between items-start">
+                                                            <span className="font-medium flex-1">{item.product.name}</span>
+                                                            <span className="font-bold">{formatCurrency(item.product.price * item.quantity)}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center bg-white/20 rounded-lg">
+                                                                <button 
+                                                                    onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                                                                    className="p-1 hover:bg-white/10 rounded-l-lg"
+                                                                >
+                                                                    <Icon type="minus" className="w-4 h-4" />
+                                                                </button>
+                                                                <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
+                                                                <button 
+                                                                    onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                                                                    className="p-1 hover:bg-white/10 rounded-r-lg"
+                                                                >
+                                                                    <Icon type="plus" className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => updateQuantity(item.product.id, 0)}
+                                                                className="text-white/50 hover:text-red-400 transition"
+                                                            >
+                                                                <Icon type="trash" className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        {bill.items.length > 0 && (
+                                            <div className="space-y-3 pt-4 border-t border-white/10">
+                                                <div className="flex justify-between text-white/70">
+                                                    <span>Subtotal</span>
+                                                    <span>{formatCurrency(calculateBill().subtotal)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={bill.discount}
+                                                        onChange={(e) => setBill({ ...bill, discount: parseFloat(e.target.value) || 0 })}
+                                                        className="bg-white/10 border border-white/20 rounded-lg px-3 py-1 w-20 text-white"
+                                                        placeholder="0"
+                                                    />
+                                                    <select
+                                                        value={bill.discountType}
+                                                        onChange={(e) => setBill({ ...bill, discountType: e.target.value })}
+                                                        className="bg-white/10 border border-white/20 rounded-lg px-2 py-1 flex-1 text-white"
+                                                    >
+                                                        <option value="percentage">% Discount</option>
+                                                        <option value="fixed">Fixed Amount</option>
+                                                    </select>
+                                                </div>
+                                                <div className="flex justify-between text-2xl font-bold pt-2 border-t border-white/20">
+                                                    <span>Total</span>
+                                                    <span>{formatCurrency(calculateBill().total)}</span>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-2 gap-3 mt-6">
+                                                    <button
+                                                        onClick={() => completeBill(true)}
+                                                        className="bg-[#8bc34a] hover:bg-[#7cb342] text-white py-4 rounded-xl font-bold shadow-lg transition-all"
+                                                    >
+                                                        Full Paid
+                                                    </button>
+                                                    <button
+                                                        onClick={() => completeBill(false)}
+                                                        className="bg-white/20 hover:bg-white/30 text-white py-4 rounded-xl font-bold transition-all"
+                                                    >
+                                                        Pay Later
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Customers, Products, Reports, Modals - All Restored Exactly From Original File */}
+                        {tab === 'customers' && (
+                            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/50 fade-in">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-2xl font-bold text-stone-800">Customer Management</h2>
+                                    <button 
+                                        onClick={() => { setEditingCustomer(null); setShowCustomerModal(true); }}
+                                        className="bg-[#4b2c20] text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-2xl transition"
+                                    >
+                                        <Icon type="plus" /> Add Customer
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {customers.map(customer => (
+                                        <div key={customer.id} className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm flex justify-between items-start group">
+                                            <div>
+                                                <h3 className="font-bold text-stone-800 text-lg">{customer.name}</h3>
+                                                <p className="text-stone-400 flex items-center gap-1">
+                                                    <Icon type="share" className="w-3 h-3" /> {customer.phone || 'No phone'}
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => { setEditingCustomer(customer); setShowCustomerModal(true); }} className="text-stone-400 hover:text-[#4b2c20] p-2">
+                                                    <Icon type="edit" />
+                                                </button>
+                                                <button onClick={() => deleteCustomer(customer.id)} className="text-stone-400 hover:text-red-500 p-2">
+                                                    <Icon type="trash" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === 'products' && (
+                            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/50 fade-in">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-2xl font-bold text-stone-800">Product Management</h2>
+                                    <button 
+                                        onClick={() => { setEditingProduct(null); setShowProductModal(true); }}
+                                        className="bg-[#4b2c20] text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-2xl transition"
+                                    >
+                                        <Icon type="plus" /> Add Product
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {products.map(product => (
+                                        <div key={product.id} className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm flex justify-between items-start">
+                                            <div>
+                                                <p className="text-xs font-bold text-[#8bc34a] uppercase tracking-wider">{product.code}</p>
+                                                <h3 className="font-bold text-stone-800 text-lg">{product.name}</h3>
+                                                <p className="text-[#4b2c20] font-bold text-xl">{formatCurrency(product.price)}</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => { setEditingProduct(product); setShowProductModal(true); }} className="text-stone-400 hover:text-[#4b2c20] p-2">
+                                                    <Icon type="edit" />
+                                                </button>
+                                                <button onClick={() => deleteProduct(product.id)} className="text-stone-400 hover:text-red-500 p-2">
+                                                    <Icon type="trash" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === 'reports' && (
+                            <div className="space-y-6 fade-in">
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50">
+                                        <div className="flex items-center gap-3 text-stone-400 mb-2">
+                                            <Icon type="trend" />
+                                            <span className="text-xs font-bold uppercase tracking-widest">Total Sales</span>
+                                        </div>
+                                        <p className="text-3xl font-black text-stone-800">{formatCurrency(stats.totalSales)}</p>
+                                    </div>
+                                    <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50">
+                                        <div className="flex items-center gap-3 text-stone-400 mb-2">
+                                            <Icon type="check" className="text-green-500" />
+                                            <span className="text-xs font-bold uppercase tracking-widest">Collected</span>
+                                        </div>
+                                        <p className="text-3xl font-black text-green-600">{formatCurrency(stats.paidAmount)}</p>
+                                    </div>
+                                    <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50">
+                                        <div className="flex items-center gap-3 text-stone-400 mb-2">
+                                            <Icon type="clock" className="text-orange-500" />
+                                            <span className="text-xs font-bold uppercase tracking-widest">Outstanding</span>
+                                        </div>
+                                        <p className="text-3xl font-black text-orange-600">{formatCurrency(stats.unpaidAmount)}</p>
+                                    </div>
+                                    <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50">
+                                        <div className="flex items-center gap-3 text-stone-400 mb-2">
+                                            <Icon type="package" className="text-purple-500" />
+                                            <span className="text-xs font-bold uppercase tracking-widest">Total Bills</span>
+                                        </div>
+                                        <p className="text-3xl font-black text-purple-600">{stats.transactionCount}</p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/50 overflow-hidden">
+                                    <div className="p-6 border-b border-stone-100 flex justify-between items-center">
+                                        <h3 className="font-bold text-xl text-stone-800">Recent Transactions</h3>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="bg-stone-50/50 text-stone-400 text-xs font-bold uppercase tracking-widest">
+                                                    <th className="px-6 py-4">Transaction Details</th>
+                                                    <th className="px-6 py-4">Status</th>
+                                                    <th className="px-6 py-4 text-right">Amount</th>
+                                                    <th className="px-6 py-4 text-right">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-stone-100">
+                                                {transactions.slice().reverse().map(t => (
+                                                    <tr key={t.id} className="hover:bg-stone-50/50 transition duration-300">
+                                                        <td className="px-6 py-4">
+                                                            <p className="font-bold text-stone-800">{t.customerName}</p>
+                                                            <p className="text-xs text-stone-400">{t.billNumber} • {new Date(t.date).toLocaleDateString()}</p>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <button 
+                                                                onClick={() => togglePaymentStatus(t.id)}
+                                                                className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm transition-all duration-300 ${
+                                                                    t.isPaid 
+                                                                    ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                                                                    : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                                                }`}
+                                                            >
+                                                                {t.isPaid ? (
+                                                                    <>
+                                                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                                                                        Paid
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></div>
+                                                                        Pending
+                                                                    </>
+                                                                )}
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <p className="font-black text-stone-800">{formatCurrency(t.total)}</p>
+                                                            {t.remainingAmount > 0 && (
+                                                                <p className="text-[10px] text-orange-500 font-bold">Due: {formatCurrency(t.remainingAmount)}</p>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex justify-end gap-2">
+                                                                <button onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }} className="p-2 text-stone-400 hover:text-[#4b2c20] transition">
+                                                                    <Icon type="eye" className="w-5 h-5" />
+                                                                </button>
+                                                                <button onClick={() => shareBill(t)} className="p-2 text-stone-400 hover:text-[#8bc34a] transition">
+                                                                    <Icon type="share" className="w-5 h-5" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ALL MODALS RESTORED FROM ORIGINAL FILE */}
+                    {showCustomerModal && (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
+                                <button onClick={() => setShowCustomerModal(false)} className="absolute top-6 right-6 text-stone-400 hover:text-stone-600">
+                                    <Icon type="x" />
+                                </button>
+                                <h2 className="text-2xl font-bold text-stone-800 mb-6">
+                                    {editingCustomer ? 'Edit Customer' : 'New Customer'}
+                                </h2>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const data = {
+                                        id: editingCustomer?.id || generateId(),
+                                        name: e.target.name.value,
+                                        phone: e.target.phone.value,
+                                        email: e.target.email.value,
+                                        address: e.target.address.value
+                                    };
+                                    editingCustomer ? updateCustomer(data) : addCustomer(data);
+                                }} className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Full Name</label>
+                                        <input name="name" defaultValue={editingCustomer?.name} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="John Doe" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Phone Number</label>
+                                        <input name="phone" defaultValue={editingCustomer?.phone} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="+91..." />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Email</label>
+                                        <input name="email" defaultValue={editingCustomer?.email} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="john@example.com" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Address</label>
+                                        <textarea name="address" defaultValue={editingCustomer?.address} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="Shipping address..." rows="2"></textarea>
+                                    </div>
+                                    <button className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4">
+                                        {editingCustomer ? 'Update Customer' : 'Save Customer'}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {showProductModal && (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
+                                <button onClick={() => setShowProductModal(false)} className="absolute top-6 right-6 text-stone-400 hover:text-stone-600">
+                                    <Icon type="x" />
+                                </button>
+                                <h2 className="text-2xl font-bold text-stone-800 mb-6">
+                                    {editingProduct ? 'Edit Product' : 'New Product'}
+                                </h2>
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const data = {
+                                        id: editingProduct?.id || generateId(),
+                                        code: e.target.code.value,
+                                        name: e.target.name.value,
+                                        price: parseFloat(e.target.price.value)
+                                    };
+                                    editingProduct ? updateProduct(data) : addProduct(data);
+                                }} className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Product Code</label>
+                                        <input name="code" defaultValue={editingProduct?.code} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="e.g. KC01" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Product Name</label>
+                                        <input name="name" defaultValue={editingProduct?.name} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="Kunafa Bite" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Price (₹)</label>
+                                        <input name="price" type="number" step="0.01" defaultValue={editingProduct?.price} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="0.00" />
+                                    </div>
+                                    <button className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4">
+                                        {editingProduct ? 'Update Product' : 'Save Product'}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {showBillPreview && selectedTransaction && (
+                        <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50 fade-in">
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative">
+                                <div className="bg-[#4b2c20] p-6 text-white text-center">
+                                    <Icon type="check" className="w-12 h-12 mx-auto mb-2" />
+                                    <h2 className="text-2xl font-bold">Transaction Saved!</h2>
+                                    <p className="text-white/60 text-sm">Bill No: {selectedTransaction.billNumber}</p>
+                                </div>
+                                <div className="p-6">
+                                    <div className="bg-stone-50 rounded-2xl p-4 font-mono text-[10px] whitespace-pre leading-relaxed mb-6 border border-stone-100 overflow-y-auto max-h-[300px]">
+                                        {generateBillText(selectedTransaction)}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={() => shareBill(selectedTransaction)} className="flex items-center justify-center gap-2 bg-[#25D366] text-white py-4 rounded-xl font-bold shadow-lg shadow-green-200">
+                                            <Icon type="share" /> WhatsApp
+                                        </button>
+                                        <button onClick={() => copyBill(selectedTransaction)} className="flex items-center justify-center gap-2 bg-stone-800 text-white py-4 rounded-xl font-bold">
+                                            <Icon type="check" /> Copy Bill
+                                        </button>
+                                    </div>
+                                    <button 
+                                        onClick={() => { setShowBillPreview(false); clearBill(); }}
+                                        className="w-full mt-3 text-stone-400 font-bold py-2 hover:text-stone-600 transition"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* DETAILS MODAL */}
+                    {showDetailsModal && selectedTransaction && (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
+                                <button onClick={() => setShowDetailsModal(false)} className="absolute top-6 right-6 text-stone-400 hover:text-stone-600">
+                                    <Icon type="x" />
+                                </button>
+                                <h2 className="text-2xl font-bold text-stone-800 mb-2">Transaction Details</h2>
+                                <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-6">{selectedTransaction.billNumber}</p>
+                                
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-end border-b border-stone-100 pb-4">
+                                        <div>
+                                            <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Customer</p>
+                                            <p className="font-bold text-stone-800 text-lg">{selectedTransaction.customerName}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Status</p>
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedTransaction.isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                {selectedTransaction.isPaid ? 'Fully Paid' : 'Outstanding'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <p className="text-xs text-stone-400 font-bold uppercase tracking-widest">Payments History</p>
+                                        <div className="bg-stone-50 rounded-2xl p-4 space-y-3">
+                                            {(selectedTransaction.payments || []).map((p, i) => (
+                                                <div key={i} className="flex justify-between items-center text-sm border-b border-stone-200 last:border-0 pb-2 last:pb-0">
+                                                    <div>
+                                                        <p className="font-bold text-stone-800">{formatCurrency(p.amount)}</p>
+                                                        <p className="text-[10px] text-stone-400">{new Date(p.date).toLocaleString()}</p>
+                                                    </div>
+                                                    <span className="text-[10px] text-stone-500 font-medium">{p.method}</span>
+                                                </div>
+                                            ))}
+                                            <div className="pt-2 flex justify-between font-bold text-stone-800">
+                                                <span>Total Collected</span>
+                                                <span>{formatCurrency(selectedTransaction.paidAmount)}</span>
+                                            </div>
+                                            {selectedTransaction.remainingAmount > 0 && (
+                                                <div className="flex justify-between font-bold text-orange-500">
+                                                    <span>Still Due</span>
+                                                    <span>{formatCurrency(selectedTransaction.remainingAmount)}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 pt-4">
+                                        {selectedTransaction.remainingAmount > 0 && (
+                                            <button 
+                                                onClick={() => { setShowDetailsModal(false); setShowPaymentModal(true); }}
+                                                className="bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg"
+                                            >
+                                                Add Payment
+                                            </button>
+                                        )}
+                                        <button 
+                                            onClick={() => deleteTransaction(selectedTransaction.id)}
+                                            className="bg-red-50 text-red-500 py-4 rounded-xl font-bold flex items-center justify-center gap-2"
+                                        >
+                                            <Icon type="trash" /> Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* PAYMENT MODAL */}
+                    {showPaymentModal && selectedTransaction && (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
+                                <button onClick={() => setShowPaymentModal(false)} className="absolute top-6 right-6 text-stone-400 hover:text-stone-600">
+                                    <Icon type="x" />
+                                </button>
+                                <h2 className="text-2xl font-bold text-stone-800 mb-2">Record Payment</h2>
+                                <p className="text-sm text-stone-400 mb-6">Enter payment from {selectedTransaction.customerName}</p>
+                                
+                                <div className="space-y-4">
+                                    <div className="bg-orange-50 p-4 rounded-2xl flex justify-between items-center mb-4">
+                                        <p className="text-sm font-bold text-orange-700 uppercase tracking-widest">Total Remaining</p>
+                                        <p className="text-2xl font-black text-orange-700">{formatCurrency(selectedTransaction.remainingAmount)}</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Payment Amount</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-stone-400">₹</span>
+                                            <input 
+                                                type="number" 
+                                                value={paymentAmount}
+                                                onChange={(e) => setPaymentAmount(e.target.value)}
+                                                className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl pl-8 pr-4 py-4 text-xl font-bold outline-none transition" 
+                                                placeholder="0.00" 
+                                                autoFocus
+                                            />
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={addPayment}
+                                        disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
+                                        className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4 disabled:opacity-50"
+                                    >
+                                        Confirm Payment
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ACCOUNTS MODAL */}
+                    {showAccountsModal && (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative">
+                                <div className="p-8 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
+                                    <div>
+                                        <h2 className="text-3xl font-black text-stone-800">Business Accounts</h2>
+                                        <p className="text-stone-400">Track all receivables and income</p>
+                                    </div>
+                                    <button onClick={() => setShowAccountsModal(false)} className="text-stone-400 hover:text-stone-600 p-2">
+                                        <Icon type="x" className="w-8 h-8" />
+                                    </button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-8 bg-[#fdfcfb]">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                                        <div className="bg-white p-8 rounded-3xl shadow-xl border border-stone-100 relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-green-500/5 rounded-full -mr-8 -mt-8 transition-all group-hover:scale-150"></div>
+                                            <Icon type="trend" className="text-green-500 mb-4 w-8 h-8" />
+                                            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Total Income</p>
+                                            <p className="text-4xl font-black text-stone-800">{formatCurrency(stats.paidAmount)}</p>
+                                        </div>
+                                        <div className="bg-white p-8 rounded-3xl shadow-xl border border-stone-100 relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 rounded-full -mr-8 -mt-8 transition-all group-hover:scale-150"></div>
+                                            <Icon type="clock" className="text-orange-500 mb-4 w-8 h-8" />
+                                            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Accounts Receivable</p>
+                                            <p className="text-4xl font-black text-stone-800">{formatCurrency(stats.unpaidAmount)}</p>
+                                        </div>
+                                        <div className="bg-white p-8 rounded-3xl shadow-xl border border-stone-100 relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-24 h-24 bg-[#4b2c20]/5 rounded-full -mr-8 -mt-8 transition-all group-hover:scale-150"></div>
+                                            <Icon type="package" className="text-[#4b2c20] mb-4 w-8 h-8" />
+                                            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Total Billing</p>
+                                            <p className="text-4xl font-black text-stone-800">{formatCurrency(stats.totalSales)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-3xl shadow-xl border border-stone-100 overflow-hidden">
+                                        <div className="p-6 border-b border-stone-100 bg-stone-50/50 flex justify-between items-center">
+                                            <h3 className="font-bold text-xl text-stone-800">Ledger Summary</h3>
+                                            <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">{transactions.length} Transactions Found</span>
+                                        </div>
+                                        {transactions.length === 0 ? (
+                                            <div className="p-20 text-center text-stone-300 italic">No ledger entries yet</div>
+                                        ) : (
+                                            <div className="divide-y divide-stone-100">
+                                                {transactions.slice().reverse().map(t => (
+                                                    <div key={t.id} className="p-6 flex flex-wrap justify-between items-center hover:bg-stone-50/50 transition cursor-pointer" onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }}>
+                                                        <div className="flex gap-4 items-center min-w-[250px]">
+                                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${t.isPaid ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                                                                <Icon type={t.isPaid ? 'check' : 'clock'} />
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-black text-stone-800 text-lg">{t.customerName}</p>
+                                                                <p className="text-xs text-stone-400 font-bold uppercase tracking-widest">{t.billNumber} • {new Date(t.date).toLocaleDateString()}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-12">
+                                                            <div className="text-right">
+                                                                <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Paid</p>
+                                                                <p className="font-bold text-green-600">{formatCurrency(t.paidAmount)}</p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Unpaid</p>
+                                                                <p className={`font-bold ${t.remainingAmount > 0 ? 'text-orange-500' : 'text-stone-300'}`}>{formatCurrency(t.remainingAmount)}</p>
+                                                            </div>
+                                                            <div className="text-right min-w-[120px]">
+                                                                <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Total Bill</p>
+                                                                <p className="font-black text-stone-800 text-xl">{formatCurrency(t.total)}</p>
+                                                            </div>
+                                                            <div className="flex gap-2 ml-4">
+                                                                <button onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded">
+                                                                    <Icon type="eye" className="w-4 h-4" />
+                                                                </button>
+                                                                <button onClick={() => shareBill(t)} className="p-2 text-green-600 hover:bg-green-50 rounded">
+                                                                    <Icon type="share" className="w-4 h-4" />
+                                                                </button>
+                                                                <button onClick={() => deleteTransaction(t.id)} className="p-2 text-red-600 hover:bg-red-50 rounded">
+                                                                    <Icon type="trash" className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
