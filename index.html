@@ -25,7 +25,7 @@
         const { useState, useEffect } = React;
 
         // YOUR GOOGLE SCRIPT URL
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykxtsPKsTNZwWFXSxy22RSDdWVxCwwhX-luSyjv51R26ow1mKuIqA0XiQTRr3mrA-YFA/exec";
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzEqc3doiV3CxVddWoNlaA_jc2LpSy2klJFedvwlUobV0bL7tlgfXqCr9rW44t3qcLl/exec";
 
         // Simple Icons
         const Icon = ({ type, className = "w-5 h-5" }) => {
@@ -128,11 +128,13 @@
             }, []);
 
             // GOOGLE SHEET SYNC LOGIC
-            const syncToSheet = async (t) => {
-                const itemsStr = t.items.map(i => `${i.product.name} (x${i.quantity})`).join(", ");
+            const syncToSheet = async (t, action = "upsert") => {
+                const itemsStr = t.items ? t.items.map(i => `${i.product.name} (x${i.quantity})`).join(", ") : "";
                 const payload = {
+                    action,
                     BillNo: t.billNumber,
                     CustomerName: t.customerName,
+                    CustomerPhone: t.customerPhone || "N/A",
                     Items: itemsStr,
                     Total: t.total,
                     Paid: t.paidAmount,
@@ -341,6 +343,8 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
 
             const deleteTransaction = (id) => {
                 if (!window.confirm('Delete this transaction? This cannot be undone!')) return;
+                const tx = transactions.find(t => t.id === id);
+                if (tx) syncToSheet(tx, "delete");
                 saveTransactions(transactions.filter(t => t.id !== id));
                 setShowDetailsModal(false);
                 setSelectedTransaction(null);
