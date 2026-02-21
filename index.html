@@ -24,10 +24,8 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // YOUR GOOGLE SCRIPT URL
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzEqc3doiV3CxVddWoNlaA_jc2LpSy2klJFedvwlUobV0bL7tlgfXqCr9rW44t3qcLl/exec";
 
-        // Simple Icons
         const Icon = ({ type, className = "w-5 h-5" }) => {
             const icons = {
                 plus: "M12 4v16m8-8H4",
@@ -46,16 +44,20 @@
                 trend: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
                 building: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
                 calendar: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
+                receipt: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01",
+                tag: "M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z",
+                download: "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4",
+                chevDown: "M19 9l-7 7-7-7",
+                chevUp: "M5 15l7-7 7 7",
             };
             return (
                 <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icons[type]} />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icons[type] || icons.plus} />
                 </svg>
             );
         };
 
-        // Utility functions
-        const formatCurrency = (amount) => `₹${amount.toFixed(2)}`;
+        const formatCurrency = (amount) => `₹${(amount||0).toFixed(2)}`;
         const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const generateBillNumber = () => {
             const date = new Date();
@@ -65,6 +67,454 @@
             return `CHO${year}${month}${random}`;
         };
 
+        // ══════════════════════════════════════════════════
+        // EXPENSE ACCOUNT TAB COMPONENT
+        // ══════════════════════════════════════════════════
+        const DEFAULT_EXP_CATS = [
+            { name: 'Supplies', icon: '📦', budget: 0 },
+            { name: 'Equipment', icon: '🔧', budget: 0 },
+            { name: 'Shipping', icon: '🚚', budget: 0 },
+            { name: 'Packaging', icon: '🎁', budget: 0 },
+            { name: 'Marketing', icon: '📣', budget: 0 },
+            { name: 'Utilities', icon: '⚡', budget: 0 },
+            { name: 'Other', icon: '🗂️', budget: 0 },
+        ];
+
+        const inputCls = "w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition text-sm";
+        const labelCls = "text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block";
+
+        const ExpenseAccount = () => {
+            const [subTab, setSubTab] = useState('add');
+            const [expenses, setExpenses] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('choco_expenses') || '[]'); } catch { return []; }
+            });
+            const [cats, setCats] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('choco_exp_cats') || 'null') || [...DEFAULT_EXP_CATS]; } catch { return [...DEFAULT_EXP_CATS]; }
+            });
+            const [filterCat, setFilterCat] = useState('all');
+            const [search, setSearch] = useState('');
+            const [sort, setSort] = useState('date-desc');
+            const [editExpId, setEditExpId] = useState(null);
+            const [editCatName, setEditCatName] = useState(null);
+            const [openGroups, setOpenGroups] = useState({});
+            const [structMonth, setStructMonth] = useState('all');
+            const [toast, setToast] = useState(null);
+            const [newCat, setNewCat] = useState({ name: '', icon: '', budget: '' });
+            const [editCatForm, setEditCatForm] = useState({ name: '', icon: '', budget: '' });
+            const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], amount: '', category: '', description: '', notes: '' });
+            const [editForm, setEditForm] = useState({});
+
+            const showToast = (msg, type = 'info') => {
+                setToast({ msg, type });
+                setTimeout(() => setToast(null), 2800);
+            };
+            const saveExp = (data) => { setExpenses(data); localStorage.setItem('choco_expenses', JSON.stringify(data)); };
+            const saveCats = (data) => { setCats(data); localStorage.setItem('choco_exp_cats', JSON.stringify(data)); };
+            const getMeta = (name) => cats.find(c => c.name === name) || { name, icon: '🗂️', budget: 0 };
+
+            const totalAll = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+            const now = new Date();
+            const thisMonthTotal = expenses.filter(e => {
+                const d = new Date(e.date + 'T00:00:00');
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            }).reduce((s, e) => s + (e.amount || 0), 0);
+            const avgEntry = expenses.length ? totalAll / expenses.length : 0;
+
+            const filtered = [...expenses].sort((a, b) => {
+                if (sort === 'date-desc') return new Date(b.date) - new Date(a.date);
+                if (sort === 'date-asc') return new Date(a.date) - new Date(b.date);
+                if (sort === 'amount-desc') return b.amount - a.amount;
+                if (sort === 'amount-asc') return a.amount - b.amount;
+                if (sort === 'category') return (a.category||'').localeCompare(b.category||'');
+                return 0;
+            }).filter(e => {
+                if (filterCat !== 'all' && e.category !== filterCat) return false;
+                if (search) {
+                    const s = search.toLowerCase();
+                    if (![(e.description||''),(e.category||''),(e.notes||'')].some(x => x.toLowerCase().includes(s))) return false;
+                }
+                return true;
+            });
+
+            const usedCats = [...new Set(expenses.map(e => e.category))].filter(Boolean);
+
+            // Structured view
+            const structMonths = [...new Set(expenses.map(e => {
+                const d = new Date(e.date + 'T00:00:00');
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            }))].sort().reverse();
+            const structFiltered = structMonth === 'all' ? expenses : expenses.filter(e => {
+                const d = new Date(e.date + 'T00:00:00');
+                return (d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')) === structMonth;
+            });
+            const grouped = {};
+            structFiltered.forEach(e => { const c = e.category || 'Uncategorized'; if (!grouped[c]) grouped[c] = []; grouped[c].push(e); });
+            const groupedSorted = Object.keys(grouped).sort((a, b) =>
+                grouped[b].reduce((s,e)=>s+e.amount,0) - grouped[a].reduce((s,e)=>s+e.amount,0)
+            );
+
+            const handleAdd = (ev) => {
+                ev.preventDefault();
+                if (!form.category || !form.amount || !form.description) return;
+                const newExp = { id: generateId(), date: form.date, amount: parseFloat(form.amount), category: form.category, description: form.description, notes: form.notes, createdAt: new Date().toISOString() };
+                saveExp([newExp, ...expenses]);
+                setForm({ date: new Date().toISOString().split('T')[0], amount: '', category: '', description: '', notes: '' });
+                showToast('Expense added!', 'success');
+                setSubTab('list');
+            };
+            const handleDel = (id) => { if (!window.confirm('Delete this expense?')) return; saveExp(expenses.filter(e => e.id !== id)); showToast('Deleted', 'info'); };
+            const handleSaveEdit = () => {
+                if (!editForm.amount || !editForm.description) return;
+                saveExp(expenses.map(e => e.id === editExpId ? { ...e, ...editForm, amount: parseFloat(editForm.amount) } : e));
+                setEditExpId(null);
+                showToast('Updated!', 'success');
+            };
+            const handleAddCat = (ev) => {
+                ev.preventDefault();
+                const name = newCat.name.trim();
+                if (!name) return;
+                if (cats.find(c => c.name.toLowerCase() === name.toLowerCase())) { showToast('Already exists!', 'error'); return; }
+                saveCats([...cats, { name, icon: newCat.icon || '🗂️', budget: parseFloat(newCat.budget) || 0 }]);
+                setNewCat({ name: '', icon: '', budget: '' });
+                showToast('Category added!', 'success');
+            };
+            const handleDelCat = (name) => {
+                const inUse = expenses.some(e => e.category === name);
+                if (inUse && !window.confirm(`"${name}" is used in expenses. Delete anyway?`)) return;
+                saveCats(cats.filter(c => c.name !== name));
+                showToast('Deleted', 'info');
+            };
+            const handleSaveEditCat = () => {
+                const name = editCatForm.name.trim();
+                if (!name) return;
+                saveCats(cats.map(c => c.name === editCatName ? { name, icon: editCatForm.icon || '🗂️', budget: parseFloat(editCatForm.budget) || 0 } : c));
+                setEditCatName(null);
+                showToast('Updated!', 'success');
+            };
+            const exportCSV = () => {
+                if (!filtered.length) { showToast('Nothing to export', 'error'); return; }
+                const header = 'Date,Category,Description,Amount,Notes\n';
+                const rows = filtered.map(e => `${e.date},${e.category},"${(e.description||'').replace(/"/g,'""')}",${e.amount},"${(e.notes||'').replace(/"/g,'""')}"`).join('\n');
+                const blob = new Blob([header + rows], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'chocolush-expenses.csv'; a.click();
+                URL.revokeObjectURL(url);
+                showToast('Exported!', 'success');
+            };
+
+            return (
+                <div className="fade-in">
+                    {/* Toast */}
+                    {toast && (
+                        <div className={`fixed bottom-6 inset-x-4 sm:left-auto sm:right-6 sm:w-72 z-50 px-5 py-3 rounded-2xl text-white font-semibold text-sm shadow-2xl fade-in ${toast.type === 'success' ? 'bg-[#8bc34a]' : toast.type === 'error' ? 'bg-red-500' : 'bg-[#4b2c20]'}`}>
+                            {toast.msg}
+                        </div>
+                    )}
+
+                    {/* Edit Expense Modal */}
+                    {editExpId && (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 fade-in p-0 sm:p-4">
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md p-6 sm:p-8 relative">
+                                <button onClick={() => setEditExpId(null)} className="absolute top-5 right-5 text-stone-400 hover:text-stone-600"><Icon type="x" /></button>
+                                <h2 className="text-xl font-bold text-stone-800 mb-5">Edit Expense</h2>
+                                <div className="space-y-3">
+                                    <div><label className={labelCls}>Date</label><input type="date" value={editForm.date||''} onChange={e=>setEditForm({...editForm,date:e.target.value})} className={inputCls} /></div>
+                                    <div><label className={labelCls}>Amount (₹)</label><input type="number" step="0.01" value={editForm.amount||''} onChange={e=>setEditForm({...editForm,amount:e.target.value})} className={inputCls} /></div>
+                                    <div><label className={labelCls}>Category</label>
+                                        <select value={editForm.category||''} onChange={e=>setEditForm({...editForm,category:e.target.value})} className={inputCls}>
+                                            <option value="">Select</option>
+                                            {cats.map(c=><option key={c.name} value={c.name}>{c.icon} {c.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div><label className={labelCls}>Description</label><input type="text" value={editForm.description||''} onChange={e=>setEditForm({...editForm,description:e.target.value})} className={inputCls} /></div>
+                                    <div><label className={labelCls}>Notes</label><textarea value={editForm.notes||''} onChange={e=>setEditForm({...editForm,notes:e.target.value})} className={inputCls} rows="2" /></div>
+                                    <button onClick={handleSaveEdit} className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all mt-2">Save Changes</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Edit Category Modal */}
+                    {editCatName && (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 fade-in p-0 sm:p-4">
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md p-6 sm:p-8 relative">
+                                <button onClick={() => setEditCatName(null)} className="absolute top-5 right-5 text-stone-400 hover:text-stone-600"><Icon type="x" /></button>
+                                <h2 className="text-xl font-bold text-stone-800 mb-5">Edit Category</h2>
+                                <div className="space-y-3">
+                                    <div><label className={labelCls}>Name</label><input type="text" value={editCatForm.name} onChange={e=>setEditCatForm({...editCatForm,name:e.target.value})} className={inputCls} /></div>
+                                    <div><label className={labelCls}>Icon (emoji)</label><input type="text" maxLength={4} value={editCatForm.icon} onChange={e=>setEditCatForm({...editCatForm,icon:e.target.value})} className={inputCls} /></div>
+                                    <div><label className={labelCls}>Monthly Budget (₹) — optional</label><input type="number" step="0.01" min="0" value={editCatForm.budget} onChange={e=>setEditCatForm({...editCatForm,budget:e.target.value})} className={inputCls} /></div>
+                                    <button onClick={handleSaveEditCat} className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all mt-2">Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                        {[
+                            { label: 'Total Spent', val: formatCurrency(totalAll), color: 'text-stone-800' },
+                            { label: 'This Month', val: formatCurrency(thisMonthTotal), color: 'text-[#4b2c20]' },
+                            { label: 'Entries', val: expenses.length, color: 'text-stone-800' },
+                            { label: 'Avg Entry', val: formatCurrency(avgEntry), color: 'text-[#8bc34a]' },
+                        ].map(s => (
+                            <div key={s.label} className="bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-lg border border-white/50">
+                                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">{s.label}</p>
+                                <p className={`text-xl font-black ${s.color}`}>{s.val}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Sub-tabs */}
+                    <div className="flex bg-white/50 backdrop-blur-md rounded-2xl p-1.5 gap-1 shadow-lg border border-white/50 mb-4">
+                        {[{k:'add',l:'Add'},{k:'list',l:'All'},{k:'structured',l:'Grouped'},{k:'categories',l:'Categories'}].map(t => (
+                            <button key={t.k} onClick={() => setSubTab(t.k)}
+                                className={`flex-1 py-2.5 rounded-xl font-bold text-xs capitalize transition-all duration-300 ${subTab === t.k ? 'bg-[#4b2c20] text-white shadow-lg' : 'text-stone-600 hover:bg-white/50'}`}>
+                                {t.l}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* ADD */}
+                    {subTab === 'add' && (
+                        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-5 border border-white/50 fade-in">
+                            <h2 className="text-lg font-bold text-stone-800 mb-4 flex items-center gap-2">
+                                <Icon type="receipt" className="text-stone-400 w-5 h-5" /> Add New Expense
+                            </h2>
+                            <form onSubmit={handleAdd} className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className={labelCls}>Date</label>
+                                        <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} required className={inputCls} />
+                                    </div>
+                                    <div><label className={labelCls}>Amount (₹)</label>
+                                        <input type="number" step="0.01" min="0" placeholder="0.00" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} required className={inputCls} />
+                                    </div>
+                                </div>
+                                <div><label className={labelCls}>Category</label>
+                                    <select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} required className={inputCls}>
+                                        <option value="">Select a category</option>
+                                        {cats.map(c=><option key={c.name} value={c.name}>{c.icon} {c.name}</option>)}
+                                    </select>
+                                </div>
+                                <div><label className={labelCls}>Description</label>
+                                    <input type="text" placeholder="Brief description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} required className={inputCls} />
+                                </div>
+                                <div><label className={labelCls}>Notes (optional)</label>
+                                    <textarea placeholder="Additional details..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className={inputCls} rows="2" />
+                                </div>
+                                <button type="submit" className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300">Add Expense</button>
+                            </form>
+                        </div>
+                    )}
+
+                    {/* LIST */}
+                    {subTab === 'list' && (
+                        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/50 overflow-hidden fade-in">
+                            <div className="p-4 border-b border-stone-100 space-y-3">
+                                <input type="text" placeholder="🔍 Search expenses..." value={search} onChange={e=>setSearch(e.target.value)}
+                                    className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-2.5 outline-none transition text-sm" />
+                                <div className="flex gap-2 overflow-x-auto pb-1">
+                                    {['all',...usedCats].map(cat => {
+                                        const meta = cat !== 'all' ? getMeta(cat) : null;
+                                        return (
+                                            <button key={cat} onClick={()=>setFilterCat(cat)}
+                                                className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-all flex-shrink-0 ${filterCat===cat?'bg-[#4b2c20] text-white shadow-md':'bg-stone-100 text-stone-500 hover:bg-stone-200'}`}>
+                                                {cat==='all'?'All':`${meta?.icon} ${cat}`}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="flex gap-2">
+                                    <select value={sort} onChange={e=>setSort(e.target.value)} className="flex-1 bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-3 py-2 text-xs font-semibold outline-none">
+                                        <option value="date-desc">📅 Newest First</option>
+                                        <option value="date-asc">📅 Oldest First</option>
+                                        <option value="amount-desc">💰 High to Low</option>
+                                        <option value="amount-asc">💰 Low to High</option>
+                                        <option value="category">🏷 Category A–Z</option>
+                                    </select>
+                                    <button onClick={exportCSV} className="bg-stone-100 hover:bg-stone-200 text-stone-600 px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1 transition">
+                                        <Icon type="download" className="w-4 h-4" /> CSV
+                                    </button>
+                                </div>
+                            </div>
+                            {filtered.length === 0 ? (
+                                <div className="p-12 text-center text-stone-300 italic text-sm">No expenses found</div>
+                            ) : (
+                                <div className="divide-y divide-stone-100">
+                                    {filtered.map(e => {
+                                        const meta = getMeta(e.category);
+                                        const dateStr = new Date(e.date+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+                                        return (
+                                            <div key={e.id} className="p-4 hover:bg-stone-50/50 transition">
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                            <span className="text-[10px] font-bold bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full uppercase tracking-wider">{meta.icon} {e.category}</span>
+                                                            <span className="text-[10px] text-stone-400">{dateStr}</span>
+                                                        </div>
+                                                        <p className="font-semibold text-stone-800 text-sm truncate">{e.description}</p>
+                                                        {e.notes && <p className="text-[11px] text-stone-400 mt-0.5">{e.notes}</p>}
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                                        <p className="font-black text-[#4b2c20] text-base">{formatCurrency(e.amount)}</p>
+                                                        <div className="flex gap-1">
+                                                            <button onClick={()=>{setEditExpId(e.id);setEditForm({...e});}} className="p-1.5 text-stone-400 hover:text-[#4b2c20] transition rounded-lg hover:bg-stone-100">
+                                                                <Icon type="edit" className="w-4 h-4" />
+                                                            </button>
+                                                            <button onClick={()=>handleDel(e.id)} className="p-1.5 text-stone-400 hover:text-red-500 transition rounded-lg hover:bg-red-50">
+                                                                <Icon type="trash" className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* GROUPED / STRUCTURED */}
+                    {subTab === 'structured' && (
+                        <div className="space-y-3 fade-in">
+                            <div className="flex gap-2 items-center flex-wrap">
+                                <select value={structMonth} onChange={e=>setStructMonth(e.target.value)}
+                                    className="flex-1 min-w-[140px] bg-white/80 backdrop-blur-md border-2 border-white/50 focus:border-[#4b2c20] rounded-xl px-4 py-2.5 text-sm font-semibold outline-none shadow">
+                                    <option value="all">All Time</option>
+                                    {structMonths.map(m=>{const[y,mo]=m.split('-');return<option key={m} value={m}>{new Date(y,mo-1).toLocaleString('default',{month:'long',year:'numeric'})}</option>;})}
+                                </select>
+                                <button onClick={()=>setOpenGroups(groupedSorted.reduce((a,c)=>({...a,[c]:true}),{}))} className="bg-white/80 backdrop-blur-md text-stone-600 px-3 py-2.5 rounded-xl font-bold text-xs shadow border border-white/50 hover:bg-white transition">Expand All</button>
+                                <button onClick={()=>setOpenGroups({})} className="bg-white/80 backdrop-blur-md text-stone-600 px-3 py-2.5 rounded-xl font-bold text-xs shadow border border-white/50 hover:bg-white transition">Collapse All</button>
+                            </div>
+                            {groupedSorted.length === 0 ? (
+                                <div className="bg-white/80 rounded-2xl p-12 text-center text-stone-300 italic text-sm shadow">No expenses for this period</div>
+                            ) : groupedSorted.map(cat => {
+                                const items = grouped[cat];
+                                const total = items.reduce((s,e)=>s+e.amount,0);
+                                const meta = getMeta(cat);
+                                const pct = meta.budget > 0 ? Math.min(100,(total/meta.budget)*100) : null;
+                                const barColor = pct === null ? '#4b2c20' : pct > 90 ? '#ef4444' : pct > 70 ? '#f97316' : '#8bc34a';
+                                const isOpen = openGroups[cat];
+                                return (
+                                    <div key={cat} className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-white/50 overflow-hidden">
+                                        <button onClick={()=>setOpenGroups(p=>({...p,[cat]:!p[cat]}))} className="w-full flex justify-between items-center p-4 hover:bg-stone-50/50 transition text-left">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center text-lg">{meta.icon}</div>
+                                                <div>
+                                                    <p className="font-bold text-stone-800 text-sm">{cat}</p>
+                                                    <p className="text-[10px] text-stone-400">{items.length} item{items.length!==1?'s':''}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-black text-[#4b2c20]">{formatCurrency(total)}</p>
+                                                <Icon type={isOpen?'chevUp':'chevDown'} className="w-4 h-4 text-stone-400" />
+                                            </div>
+                                        </button>
+                                        {pct !== null && (
+                                            <div className="px-4 pb-2">
+                                                <div className="flex justify-between text-[10px] text-stone-400 mb-1">
+                                                    <span>Budget: {formatCurrency(meta.budget)}</span><span>{pct.toFixed(0)}% used</span>
+                                                </div>
+                                                <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                                                    <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,background:barColor}}></div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {isOpen && (
+                                            <div className="border-t border-stone-100 divide-y divide-stone-100">
+                                                {items.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e=>(
+                                                    <div key={e.id} className="px-4 py-3 flex justify-between items-start gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-semibold text-stone-800 text-sm truncate">{e.description}</p>
+                                                            <p className="text-[10px] text-stone-400">{new Date(e.date+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</p>
+                                                            {e.notes && <p className="text-[11px] text-stone-400">{e.notes}</p>}
+                                                        </div>
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                            <p className="font-black text-[#4b2c20] text-sm">{formatCurrency(e.amount)}</p>
+                                                            <button onClick={()=>{setEditExpId(e.id);setEditForm({...e});}} className="p-1.5 text-stone-300 hover:text-[#4b2c20] transition"><Icon type="edit" className="w-3.5 h-3.5" /></button>
+                                                            <button onClick={()=>handleDel(e.id)} className="p-1.5 text-stone-300 hover:text-red-500 transition"><Icon type="trash" className="w-3.5 h-3.5" /></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* CATEGORIES */}
+                    {subTab === 'categories' && (
+                        <div className="space-y-4 fade-in">
+                            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-5 border border-white/50">
+                                <h3 className="font-bold text-stone-800 mb-4 flex items-center gap-2"><Icon type="tag" className="text-stone-400 w-4 h-4"/>Add Category</h3>
+                                <form onSubmit={handleAddCat} className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div><label className={labelCls}>Name</label><input type="text" placeholder="e.g. Travel" value={newCat.name} onChange={e=>setNewCat({...newCat,name:e.target.value})} required className={inputCls} /></div>
+                                        <div><label className={labelCls}>Icon (emoji)</label><input type="text" placeholder="✈️" maxLength={4} value={newCat.icon} onChange={e=>setNewCat({...newCat,icon:e.target.value})} className={inputCls} /></div>
+                                    </div>
+                                    <div><label className={labelCls}>Monthly Budget (₹) — optional</label><input type="number" step="0.01" min="0" placeholder="0.00" value={newCat.budget} onChange={e=>setNewCat({...newCat,budget:e.target.value})} className={inputCls} /></div>
+                                    <button type="submit" className="w-full bg-[#4b2c20] text-white py-3 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all">Add Category</button>
+                                </form>
+                            </div>
+                            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/50 overflow-hidden">
+                                <div className="p-4 border-b border-stone-100"><h3 className="font-bold text-stone-800">Current Categories</h3></div>
+                                <div className="divide-y divide-stone-100">
+                                    {cats.map(cat=>{
+                                        const catTotal = expenses.filter(e=>e.category===cat.name).reduce((s,e)=>s+e.amount,0);
+                                        const catCount = expenses.filter(e=>e.category===cat.name).length;
+                                        return (
+                                            <div key={cat.name} className="p-4 flex justify-between items-center gap-3 hover:bg-stone-50/50 transition">
+                                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                    <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center text-xl flex-shrink-0">{cat.icon}</div>
+                                                    <div className="min-w-0">
+                                                        <p className="font-bold text-stone-800 text-sm">{cat.name}</p>
+                                                        <p className="text-[10px] text-stone-400">{catCount} expense{catCount!==1?'s':''} · {formatCurrency(catTotal)}{cat.budget>0?` · Budget: ₹${cat.budget}`:''}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-1 flex-shrink-0">
+                                                    <button onClick={()=>{setEditCatName(cat.name);setEditCatForm({name:cat.name,icon:cat.icon,budget:cat.budget||''});}} className="p-2 text-stone-400 hover:text-[#4b2c20] transition rounded-lg hover:bg-stone-100"><Icon type="edit" className="w-4 h-4" /></button>
+                                                    <button onClick={()=>handleDelCat(cat.name)} className="p-2 text-stone-400 hover:text-red-500 transition rounded-lg hover:bg-red-50"><Icon type="trash" className="w-4 h-4" /></button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            {expenses.length > 0 && (
+                                <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-5 border border-white/50">
+                                    <h3 className="font-bold text-stone-800 mb-4">Spending by Category</h3>
+                                    <div className="space-y-3">
+                                        {cats.map(cat=>{
+                                            const total = expenses.filter(e=>e.category===cat.name).reduce((s,e)=>s+e.amount,0);
+                                            if (!total) return null;
+                                            const pct = totalAll > 0 ? (total/totalAll*100) : 0;
+                                            return (
+                                                <div key={cat.name}>
+                                                    <div className="flex justify-between text-sm mb-1">
+                                                        <span className="font-semibold text-stone-700">{cat.icon} {cat.name}</span>
+                                                        <span className="font-black text-[#4b2c20]">{formatCurrency(total)} <span className="text-stone-400 font-normal text-xs">({pct.toFixed(1)}%)</span></span>
+                                                    </div>
+                                                    <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                                                        <div className="h-full rounded-full transition-all" style={{width:`${pct}%`,background:'linear-gradient(to right,#4b2c20,#8bc34a)'}}></div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        // ══════════════════════════════════════════════════
+        // END EXPENSE ACCOUNT
+        // ══════════════════════════════════════════════════
+
         const App = () => {
             const [tab, setTab] = useState('billing');
             const [customers, setCustomers] = useState([]);
@@ -73,15 +523,12 @@
             const [bill, setBill] = useState({ items: [], discount: 0, discountType: 'percentage' });
             const [selectedCustomer, setSelectedCustomer] = useState(null);
             const [loading, setLoading] = useState(true);
-            
-            // Modals
             const [showCustomerModal, setShowCustomerModal] = useState(false);
             const [showProductModal, setShowProductModal] = useState(false);
             const [showBillPreview, setShowBillPreview] = useState(false);
             const [showPaymentModal, setShowPaymentModal] = useState(false);
             const [showDetailsModal, setShowDetailsModal] = useState(false);
             const [showAccountsModal, setShowAccountsModal] = useState(false);
-            
             const [editingCustomer, setEditingCustomer] = useState(null);
             const [editingProduct, setEditingProduct] = useState(null);
             const [selectedTransaction, setSelectedTransaction] = useState(null);
@@ -101,7 +548,6 @@
                             setCustomers(defaultCustomers);
                             localStorage.setItem('chocolush_customers', JSON.stringify(defaultCustomers));
                         }
-
                         const savedProducts = localStorage.getItem('chocolush_products');
                         if (savedProducts) {
                             setProducts(JSON.parse(savedProducts));
@@ -114,149 +560,86 @@
                             setProducts(defaultProducts);
                             localStorage.setItem('chocolush_products', JSON.stringify(defaultProducts));
                         }
-
                         const savedTransactions = localStorage.getItem('chocolush_transactions');
-                        if (savedTransactions) {
-                            setTransactions(JSON.parse(savedTransactions));
-                        }
-                    } catch (error) {
-                        console.error('Error loading data:', error);
-                    }
+                        if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
+                    } catch (error) { console.error('Error loading data:', error); }
                     setLoading(false);
                 };
                 loadData();
             }, []);
 
-            // GOOGLE SHEET SYNC LOGIC
             const syncToSheet = async (t, action = "upsert") => {
                 const itemsStr = t.items ? t.items.map(i => `${i.product.name} (x${i.quantity})`).join(", ") : "";
-                const payload = {
-                    action,
-                    BillNo: t.billNumber,
-                    CustomerName: t.customerName,
-                    CustomerPhone: t.customerPhone || "N/A",
-                    Items: itemsStr,
-                    Total: t.total,
-                    Paid: t.paidAmount,
-                    Unpaid: t.remainingAmount,
-                    Date: new Date(t.date).toLocaleString('en-IN')
-                };
-                try {
-                    await fetch(SCRIPT_URL, {
-                        method: 'POST',
-                        mode: 'no-cors',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                } catch (e) { console.error("Sync error", e); }
+                const payload = { action, BillNo: t.billNumber, CustomerName: t.customerName, CustomerPhone: t.customerPhone || "N/A", Items: itemsStr, Total: t.total, Paid: t.paidAmount, Unpaid: t.remainingAmount, Date: new Date(t.date).toLocaleString('en-IN') };
+                try { await fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); } catch (e) { console.error("Sync error", e); }// Add this inside the App component
+const exportAllData = (type) => {
+    let header = '';
+    let rows = '';
+    let filename = '';
+
+    if (type === 'customers') {
+        header = 'Name,Phone,Email,Address\n';
+        rows = customers.map(c => `"${c.name}","${c.phone||''}","${c.email||''}","${(c.address||'').replace(/\n/g,' ')}"`).join('\n');
+        filename = 'chocolush-customers.csv';
+    } else if (type === 'products') {
+        header = 'Code,Name,Price\n';
+        rows = products.map(p => `${p.code},"${p.name}",${p.price}`).join('\n');
+        filename = 'chocolush-products.csv';
+    } else if (type === 'transactions') {
+        header = 'Date,Bill No,Customer,Total,Paid,Remaining\n';
+        rows = transactions.map(t => `${new Date(t.date).toLocaleDateString()},${t.billNumber},"${t.customerName}",${t.total},${t.paidAmount},${t.remainingAmount}`).join('\n');
+        filename = 'chocolush-all-sales.csv';
+    } else if (type === 'monthly') {
+        // This groups data by Month-Year for the report
+        const monthly = transactions.reduce((acc, t) => {
+            const m = new Date(t.date).toLocaleString('default', { month: 'long', year: 'numeric' });
+            if (!acc[m]) acc[m] = { sales: 0, cash: 0, due: 0 };
+            acc[m].sales += t.total; acc[m].cash += t.paidAmount; acc[m].due += t.remainingAmount;
+            return acc;
+        }, {});
+        header = 'Month,Total Sales,Collected,Outstanding\n';
+        rows = Object.entries(monthly).map(([m, d]) => `${m},${d.sales.toFixed(2)},${d.cash.toFixed(2)},${d.due.toFixed(2)}`).join('\n');
+        filename = 'chocolush-monthly-summary.csv';
+    }
+
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+};
+
             };
 
-            const saveCustomers = (data) => {
-                setCustomers(data);
-                localStorage.setItem('chocolush_customers', JSON.stringify(data));
-            };
+            const saveCustomers = (data) => { setCustomers(data); localStorage.setItem('chocolush_customers', JSON.stringify(data)); };
+            const saveProducts = (data) => { setProducts(data); localStorage.setItem('chocolush_products', JSON.stringify(data)); };
+            const saveTransactions = (data) => { setTransactions(data); localStorage.setItem('chocolush_transactions', JSON.stringify(data)); };
 
-            const saveProducts = (data) => {
-                setProducts(data);
-                localStorage.setItem('chocolush_products', JSON.stringify(data));
-            };
-
-            const saveTransactions = (data) => {
-                setTransactions(data);
-                localStorage.setItem('chocolush_transactions', JSON.stringify(data));
-            };
-
-            const addCustomer = (customer) => {
-                const newCustomer = { ...customer, id: generateId() };
-                saveCustomers([...customers, newCustomer]);
-                setShowCustomerModal(false);
-                setEditingCustomer(null);
-            };
-
-            const updateCustomer = (customer) => {
-                saveCustomers(customers.map(c => c.id === customer.id ? customer : c));
-                setShowCustomerModal(false);
-                setEditingCustomer(null);
-            };
-
-            const deleteCustomer = (id) => {
-                if (!window.confirm('Delete this customer?')) return;
-                saveCustomers(customers.filter(c => c.id !== id));
-            };
-
-            const addProduct = (product) => {
-                const newProduct = { ...product, id: generateId() };
-                saveProducts([...products, newProduct]);
-                setShowProductModal(false);
-                setEditingProduct(null);
-            };
-
-            const updateProduct = (product) => {
-                saveProducts(products.map(p => p.id === product.id ? product : p));
-                setShowProductModal(false);
-                setEditingProduct(null);
-            };
-
-            const deleteProduct = (id) => {
-                if (!window.confirm('Delete this product?')) return;
-                saveProducts(products.filter(p => p.id !== id));
-            };
+            const addCustomer = (customer) => { const newCustomer = { ...customer, id: generateId() }; saveCustomers([...customers, newCustomer]); setShowCustomerModal(false); setEditingCustomer(null); };
+            const updateCustomer = (customer) => { saveCustomers(customers.map(c => c.id === customer.id ? customer : c)); setShowCustomerModal(false); setEditingCustomer(null); };
+            const deleteCustomer = (id) => { if (!window.confirm('Delete this customer?')) return; saveCustomers(customers.filter(c => c.id !== id)); };
+            const addProduct = (product) => { const newProduct = { ...product, id: generateId() }; saveProducts([...products, newProduct]); setShowProductModal(false); setEditingProduct(null); };
+            const updateProduct = (product) => { saveProducts(products.map(p => p.id === product.id ? product : p)); setShowProductModal(false); setEditingProduct(null); };
+            const deleteProduct = (id) => { if (!window.confirm('Delete this product?')) return; saveProducts(products.filter(p => p.id !== id)); };
 
             const addToBill = (product) => {
                 const existing = bill.items.find(item => item.product.id === product.id);
-                if (existing) {
-                    setBill({
-                        ...bill,
-                        items: bill.items.map(item =>
-                            item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-                        )
-                    });
-                } else {
-                    setBill({ ...bill, items: [...bill.items, { product, quantity: 1 }] });
-                }
+                if (existing) { setBill({ ...bill, items: bill.items.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item) }); }
+                else { setBill({ ...bill, items: [...bill.items, { product, quantity: 1 }] }); }
             };
-
             const updateQuantity = (productId, quantity) => {
-                if (quantity < 1) {
-                    setBill({ ...bill, items: bill.items.filter(item => item.product.id !== productId) });
-                } else {
-                    setBill({
-                        ...bill,
-                        items: bill.items.map(item =>
-                            item.product.id === productId ? { ...item, quantity } : item
-                        )
-                    });
-                }
+                if (quantity < 1) { setBill({ ...bill, items: bill.items.filter(item => item.product.id !== productId) }); }
+                else { setBill({ ...bill, items: bill.items.map(item => item.product.id === productId ? { ...item, quantity } : item) }); }
             };
-
             const calculateBill = () => {
                 const subtotal = bill.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
                 const discount = bill.discountType === 'percentage' ? (subtotal * bill.discount) / 100 : bill.discount;
                 const total = subtotal - discount;
                 return { subtotal, discount, total };
             };
-
             const completeBill = (isPaid) => {
                 if (!selectedCustomer || bill.items.length === 0) return;
-
                 const { subtotal, discount, total } = calculateBill();
-                const transaction = {
-                    id: generateId(),
-                    billNumber: generateBillNumber(),
-                    customerId: selectedCustomer.id,
-                    customerName: selectedCustomer.name,
-                    customerPhone: selectedCustomer.phone,
-                    items: bill.items,
-                    subtotal,
-                    discount,
-                    total,
-                    isPaid,
-                    paidAmount: isPaid ? total : 0,
-                    remainingAmount: isPaid ? 0 : total,
-                    date: new Date().toISOString(),
-                    payments: isPaid ? [{ amount: total, date: new Date().toISOString(), method: 'Full Payment' }] : []
-                };
-
+                const transaction = { id: generateId(), billNumber: generateBillNumber(), customerId: selectedCustomer.id, customerName: selectedCustomer.name, customerPhone: selectedCustomer.phone, items: bill.items, subtotal, discount, total, isPaid, paidAmount: isPaid ? total : 0, remainingAmount: isPaid ? 0 : total, date: new Date().toISOString(), payments: isPaid ? [{ amount: total, date: new Date().toISOString(), method: 'Full Payment' }] : [] };
                 const newList = [...transactions, transaction];
                 saveTransactions(newList);
                 setSelectedTransaction(transaction);
@@ -277,70 +660,40 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                 setShowBillPreview(true);
                 syncToSheet(transaction);
             };
-
-            const clearBill = () => {
-                setBill({ items: [], discount: 0, discountType: 'percentage' });
-                setSelectedCustomer(null);
-                setShowBillPreview(false);
-            };
-
+            const clearBill = () => { setBill({ items: [], discount: 0, discountType: 'percentage' }); setSelectedCustomer(null); setShowBillPreview(false); };
             const addPayment = () => {
                 if (!selectedTransaction || !paymentAmount || parseFloat(paymentAmount) <= 0) return;
                 const amount = parseFloat(paymentAmount);
-                if (amount > selectedTransaction.remainingAmount) {
-                    alert('Payment exceeds remaining amount!');
-                    return;
-                }
-
+                if (amount > selectedTransaction.remainingAmount) { alert('Payment exceeds remaining amount!'); return; }
                 const updated = transactions.map(t => {
                     if (t.id === selectedTransaction.id) {
                         const newPaidAmount = t.paidAmount + amount;
                         const newRemaining = t.total - newPaidAmount;
-                        const updatedTx = {
-                            ...t,
-                            paidAmount: newPaidAmount,
-                            remainingAmount: newRemaining,
-                            isPaid: newRemaining <= 0,
-                            payments: [...(t.payments || []), { amount, date: new Date().toISOString(), method: 'Partial Payment' }]
-                        };
+                        const updatedTx = { ...t, paidAmount: newPaidAmount, remainingAmount: newRemaining, isPaid: newRemaining <= 0, payments: [...(t.payments || []), { amount, date: new Date().toISOString(), method: 'Partial Payment' }] };
                         syncToSheet(updatedTx);
                         return updatedTx;
                     }
                     return t;
                 });
-
                 saveTransactions(updated);
                 setSelectedTransaction(updated.find(t => t.id === selectedTransaction.id));
                 setShowPaymentModal(false);
                 setPaymentAmount('');
             };
-
             const togglePaymentStatus = (id) => {
                 const updated = transactions.map(t => {
                     if (t.id === id) {
                         let updatedTx;
-                        if (t.isPaid) {
-                            updatedTx = { ...t, isPaid: false, paidAmount: 0, remainingAmount: t.total, payments: [] };
-                        } else {
-                            updatedTx = {
-                                ...t,
-                                isPaid: true,
-                                paidAmount: t.total,
-                                remainingAmount: 0,
-                                payments: [{ amount: t.total, date: new Date().toISOString(), method: 'Full Payment' }]
-                            };
-                        }
+                        if (t.isPaid) { updatedTx = { ...t, isPaid: false, paidAmount: 0, remainingAmount: t.total, payments: [] }; }
+                        else { updatedTx = { ...t, isPaid: true, paidAmount: t.total, remainingAmount: 0, payments: [{ amount: t.total, date: new Date().toISOString(), method: 'Full Payment' }] }; }
                         syncToSheet(updatedTx);
                         return updatedTx;
                     }
                     return t;
                 });
                 saveTransactions(updated);
-                if (selectedTransaction && selectedTransaction.id === id) {
-                    setSelectedTransaction(updated.find(t => t.id === id));
-                }
+                if (selectedTransaction && selectedTransaction.id === id) setSelectedTransaction(updated.find(t => t.id === id));
             };
-
             const deleteTransaction = (id) => {
                 if (!window.confirm('Delete this transaction? This cannot be undone!')) return;
                 const tx = transactions.find(t => t.id === id);
@@ -349,37 +702,22 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                 setShowDetailsModal(false);
                 setSelectedTransaction(null);
             };
-
             const generateBillText = (t) => {
                 let text = `\n----------------------------------------\n         CHOCOLUSH          \n     Premium Kunafa Chocolates     \n----------------------------------------\n\nBill No: ${t.billNumber}\nDate: ${new Date(t.date).toLocaleString('en-IN')}\nCustomer: ${t.customerName}\n`;
                 if (t.customerPhone) text += `Phone: ${t.customerPhone}\n`;
                 text += `\n----------------------------------------\nITEMS:\n----------------------------------------\n`;
-                t.items.forEach((item, i) => {
-                    text += `${i + 1}. ${item.product.name}\n   ${item.quantity} x Rs.${item.product.price.toFixed(2)} = Rs.${(item.quantity * item.product.price).toFixed(2)}\n`;
-                });
+                t.items.forEach((item, i) => { text += `${i + 1}. ${item.product.name}\n   ${item.quantity} x Rs.${item.product.price.toFixed(2)} = Rs.${(item.quantity * item.product.price).toFixed(2)}\n`; });
                 text += `\n----------------------------------------\nSubtotal:  Rs.${t.subtotal.toFixed(2)}\n`;
                 if (t.discount > 0) text += `Discount:  -Rs.${t.discount.toFixed(2)}\n`;
                 text += `----------------------------------------\nTOTAL:     Rs.${t.total.toFixed(2)}\n----------------------------------------\n\n`;
-                if (t.isPaid) {
-                    text += `Payment Status: PAID\n`;
-                } else if (t.paidAmount > 0) {
-                    text += `Payment Status: PARTIAL\nPaid Amount:    Rs.${t.paidAmount.toFixed(2)}\nRemaining:      Rs.${t.remainingAmount.toFixed(2)}\n`;
-                } else {
-                    text += `Payment Status: PAY LATER\nAmount Due:     Rs.${t.total.toFixed(2)}\n`;
-                }
+                if (t.isPaid) { text += `Payment Status: PAID\n`; }
+                else if (t.paidAmount > 0) { text += `Payment Status: PARTIAL\nPaid Amount:    Rs.${t.paidAmount.toFixed(2)}\nRemaining:      Rs.${t.remainingAmount.toFixed(2)}\n`; }
+                else { text += `Payment Status: PAY LATER\nAmount Due:     Rs.${t.total.toFixed(2)}\n`; }
                 text += `\n----------------------------------------\nThank you for your business!\nVisit us again!\n----------------------------------------\n`;
                 return text;
             };
-
-
-            const shareBill = (t) => {
-                const text = encodeURIComponent(generateBillText(t));
-                window.open(`https://wa.me/?text=${text}`, '_blank');
-            };
-
-            const copyBill = (t) => {
-                navigator.clipboard.writeText(generateBillText(t)).then(() => alert('Copied!'));
-            };
+            const shareBill = (t) => { const text = encodeURIComponent(generateBillText(t)); window.open(`https://wa.me/?text=${text}`, '_blank'); };
+            const copyBill = (t) => { navigator.clipboard.writeText(generateBillText(t)).then(() => alert('Copied!')); };
 
             const stats = {
                 totalSales: transactions.reduce((sum, t) => sum + t.total, 0),
@@ -399,116 +737,72 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                 );
             }
 
+            const modalCls = "fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 fade-in";
+            const modalBox = "bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md p-6 sm:p-8 relative";
+
             return (
-                <div className="min-h-screen bg-gradient-to-br from-[#f1f8e9] via-[#efebe9] to-[#dcedc8] p-4 sm:p-6">
+                <div className="min-h-screen bg-gradient-to-br from-[#f1f8e9] via-[#efebe9] to-[#dcedc8] p-3 sm:p-6">
                     {/* Header */}
-                    <div className="max-w-7xl mx-auto mb-6">
-                        <div className="bg-gradient-to-r from-[#4b2c20] to-[#5d4037] rounded-2xl shadow-2xl p-6 text-white relative overflow-hidden">
+                    <div className="max-w-7xl mx-auto mb-4">
+                        <div className="bg-gradient-to-r from-[#4b2c20] to-[#5d4037] rounded-2xl shadow-2xl p-4 sm:p-6 text-white relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-32 -mt-32"></div>
                             <div className="relative flex justify-between items-center">
                                 <div className="flex items-center gap-3">
-                                    <Icon type="cart" className="w-8 h-8" />
+                                    <Icon type="cart" className="w-7 h-7 sm:w-8 sm:h-8" />
                                     <div>
-                                        <h1 className="text-3xl font-bold">Chocolush</h1>
-                                        <p className="text-stone-100">Premium Kunafa Chocolate Billing</p>
+                                        <h1 className="text-xl sm:text-3xl font-bold">Chocolush</h1>
+                                        <p className="text-stone-100 text-xs sm:text-sm">Premium Kunafa Chocolate Billing</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => setShowAccountsModal(true)}
-                                    className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl font-semibold flex items-center gap-2 transition"
-                                >
-                                    <Icon type="building" /> Accounts
+                                <button onClick={() => setShowAccountsModal(true)} className="bg-white/20 hover:bg-white/30 px-3 py-2 sm:px-4 rounded-xl font-semibold flex items-center gap-1 sm:gap-2 transition text-sm">
+                                    <Icon type="building" className="w-4 h-4" /><span className="hidden sm:inline">Accounts</span>
                                 </button>
                             </div>
                         </div>
                     </div>
 
                     {/* Tabs */}
-                    <div className="max-w-7xl mx-auto mb-6 flex bg-white/50 backdrop-blur-md rounded-2xl p-2 gap-2 shadow-lg border border-white/50">
-                        {['billing', 'customers', 'products', 'reports'].map((t) => (
-                            <button
-                                key={t}
-                                onClick={() => setTab(t)}
-                                className={`flex-1 py-3 rounded-xl font-bold capitalize transition-all duration-300 ${
-                                    tab === t 
-                                    ? 'bg-[#8bc34a] text-white shadow-lg transform scale-[1.02]' 
-                                    : 'text-stone-600 hover:bg-white/50'
-                                }`}
-                            >
-                                {t}
+                    <div className="max-w-7xl mx-auto mb-4 flex bg-white/50 backdrop-blur-md rounded-2xl p-1.5 gap-1 shadow-lg border border-white/50 overflow-x-auto">
+                        {['billing', 'customers', 'products', 'reports', 'expenses'].map((t) => (
+                            <button key={t} onClick={() => setTab(t)}
+                                className={`flex-1 whitespace-nowrap py-2.5 px-2 rounded-xl font-bold capitalize transition-all duration-300 text-xs sm:text-sm ${tab === t ? 'bg-[#8bc34a] text-white shadow-lg transform scale-[1.02]' : 'text-stone-600 hover:bg-white/50'}`}>
+                                {t === 'expenses' ? ' Expenses' : t}
                             </button>
                         ))}
                     </div>
 
-                    {/* Main Content Areas - Restored Exactly From Original */}
                     <div className="max-w-7xl mx-auto">
                         {tab === 'billing' && (
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 fade-in">
-                                {/* Billing Logic (Select Customer, Items, Bill Summary) Restored From Original File */}
-                                <div className="lg:col-span-2 space-y-6">
-                                    <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/50">
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 fade-in">
+                                <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+                                    <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-4 sm:p-6 border border-white/50">
                                         <div className="flex justify-between items-center mb-4">
-                                            <h2 className="text-xl font-bold text-stone-800 flex items-center gap-2">
-                                                <Icon type="users" className="text-stone-400" />
-                                                Select Customer
-                                            </h2>
-                                            <button 
-                                                onClick={() => { setEditingCustomer(null); setShowCustomerModal(true); }}
-                                                className="text-[#8bc34a] hover:bg-[#8bc34a]/10 p-2 rounded-full transition"
-                                            >
-                                                <Icon type="plus" />
-                                            </button>
+                                            <h2 className="text-lg sm:text-xl font-bold text-stone-800 flex items-center gap-2"><Icon type="users" className="text-stone-400" />Select Customer</h2>
+                                            <button onClick={() => { setEditingCustomer(null); setShowCustomerModal(true); }} className="text-[#8bc34a] hover:bg-[#8bc34a]/10 p-2 rounded-full transition"><Icon type="plus" /></button>
                                         </div>
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                                             {customers.map(customer => (
-                                                <button
-                                                    key={customer.id}
-                                                    onClick={() => setSelectedCustomer(customer)}
-                                                    className={`p-4 rounded-xl border-2 transition-all duration-300 text-left relative group ${
-                                                        selectedCustomer?.id === customer.id
-                                                        ? 'border-[#4b2c20] bg-stone-50'
-                                                        : 'border-white bg-white/50 hover:border-stone-200'
-                                                    }`}
-                                                >
-                                                    <p className="font-bold text-stone-800 line-clamp-1">{customer.name}</p>
+                                                <button key={customer.id} onClick={() => setSelectedCustomer(customer)}
+                                                    className={`p-3 sm:p-4 rounded-xl border-2 transition-all duration-300 text-left relative group ${selectedCustomer?.id === customer.id ? 'border-[#4b2c20] bg-stone-50' : 'border-white bg-white/50 hover:border-stone-200'}`}>
+                                                    <p className="font-bold text-stone-800 line-clamp-1 text-sm">{customer.name}</p>
                                                     <p className="text-xs text-stone-400">{customer.phone || 'No phone'}</p>
                                                     {selectedCustomer?.id === customer.id && (
-                                                        <div className="absolute -top-2 -right-2 bg-[#4b2c20] text-white rounded-full p-1 shadow-lg">
-                                                            <Icon type="check" className="w-3 h-3" />
-                                                        </div>
+                                                        <div className="absolute -top-2 -right-2 bg-[#4b2c20] text-white rounded-full p-1 shadow-lg"><Icon type="check" className="w-3 h-3" /></div>
                                                     )}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
-
-                                    <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/50">
+                                    <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-4 sm:p-6 border border-white/50">
                                         <div className="flex justify-between items-center mb-4">
-                                            <h2 className="text-xl font-bold text-stone-800 flex items-center gap-2">
-                                                <Icon type="package" className="text-stone-400" />
-                                                Products
-                                            </h2>
-                                            <div className="flex gap-2">
-                                                <button 
-                                                    onClick={() => { setEditingProduct(null); setShowProductModal(true); }}
-                                                    className="text-[#8bc34a] hover:bg-[#8bc34a]/10 p-2 rounded-full transition"
-                                                >
-                                                    <Icon type="plus" />
-                                                </button>
-                                            </div>
+                                            <h2 className="text-lg sm:text-xl font-bold text-stone-800 flex items-center gap-2"><Icon type="package" className="text-stone-400" />Products</h2>
+                                            <button onClick={() => { setEditingProduct(null); setShowProductModal(true); }} className="text-[#8bc34a] hover:bg-[#8bc34a]/10 p-2 rounded-full transition"><Icon type="plus" /></button>
                                         </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             {products.map(product => (
-                                                <button
-                                                    key={product.id}
-                                                    onClick={() => addToBill(product)}
-                                                    className="p-4 bg-white rounded-xl border-2 border-transparent hover:border-[#4b2c20] shadow-sm transition-all duration-300 group text-left"
-                                                >
+                                                <button key={product.id} onClick={() => addToBill(product)} className="p-4 bg-white rounded-xl border-2 border-transparent hover:border-[#4b2c20] shadow-sm transition-all duration-300 group text-left">
                                                     <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <p className="font-bold text-stone-800">{product.name}</p>
-                                                            <p className="text-xs text-stone-400">Code: {product.code}</p>
-                                                        </div>
+                                                        <div><p className="font-bold text-stone-800 text-sm">{product.name}</p><p className="text-xs text-stone-400">Code: {product.code}</p></div>
                                                         <p className="font-bold text-[#4b2c20]">{formatCurrency(product.price)}</p>
                                                     </div>
                                                 </button>
@@ -516,96 +810,43 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                         </div>
                                     </div>
                                 </div>
-
                                 <div className="space-y-6">
-                                    <div className="bg-[#4b2c20] rounded-2xl shadow-xl p-6 text-white sticky top-6">
-                                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                                            <Icon type="cart" />
-                                            Current Bill
-                                        </h2>
-                                        
-                                        <div className="space-y-4 mb-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                    <div className="bg-[#4b2c20] rounded-2xl shadow-xl p-4 sm:p-6 text-white lg:sticky lg:top-6">
+                                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon type="cart" />Current Bill</h2>
+                                        <div className="space-y-4 mb-6 max-h-[300px] sm:max-h-[400px] overflow-y-auto pr-2">
                                             {bill.items.length === 0 ? (
-                                                <div className="text-center py-8 opacity-50">
-                                                    <Icon type="cart" className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                                                    <p>Cart is empty</p>
-                                                </div>
-                                            ) : (
-                                                bill.items.map((item, index) => (
-                                                    <div key={index} className="flex flex-col gap-2 p-3 bg-white/10 rounded-xl">
-                                                        <div className="flex justify-between items-start">
-                                                            <span className="font-medium flex-1">{item.product.name}</span>
-                                                            <span className="font-bold">{formatCurrency(item.product.price * item.quantity)}</span>
-                                                        </div>
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex items-center bg-white/20 rounded-lg">
-                                                                <button 
-                                                                    onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                                                                    className="p-1 hover:bg-white/10 rounded-l-lg"
-                                                                >
-                                                                    <Icon type="minus" className="w-4 h-4" />
-                                                                </button>
-                                                                <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
-                                                                <button 
-                                                                    onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                                                                    className="p-1 hover:bg-white/10 rounded-r-lg"
-                                                                >
-                                                                    <Icon type="plus" className="w-4 h-4" />
-                                                                </button>
-                                                            </div>
-                                                            <button 
-                                                                onClick={() => updateQuantity(item.product.id, 0)}
-                                                                className="text-white/50 hover:text-red-400 transition"
-                                                            >
-                                                                <Icon type="trash" className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
+                                                <div className="text-center py-8 opacity-50"><Icon type="cart" className="w-12 h-12 mx-auto mb-2 opacity-20" /><p>Cart is empty</p></div>
+                                            ) : bill.items.map((item, index) => (
+                                                <div key={index} className="flex flex-col gap-2 p-3 bg-white/10 rounded-xl">
+                                                    <div className="flex justify-between items-start">
+                                                        <span className="font-medium flex-1 text-sm">{item.product.name}</span>
+                                                        <span className="font-bold">{formatCurrency(item.product.price * item.quantity)}</span>
                                                     </div>
-                                                ))
-                                            )}
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center bg-white/20 rounded-lg">
+                                                            <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="p-1 hover:bg-white/10 rounded-l-lg"><Icon type="minus" className="w-4 h-4" /></button>
+                                                            <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
+                                                            <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)} className="p-1 hover:bg-white/10 rounded-r-lg"><Icon type="plus" className="w-4 h-4" /></button>
+                                                        </div>
+                                                        <button onClick={() => updateQuantity(item.product.id, 0)} className="text-white/50 hover:text-red-400 transition"><Icon type="trash" className="w-4 h-4" /></button>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-
                                         {bill.items.length > 0 && (
                                             <div className="space-y-3 pt-4 border-t border-white/10">
-                                                <div className="flex justify-between text-white/70">
-                                                    <span>Subtotal</span>
-                                                    <span>{formatCurrency(calculateBill().subtotal)}</span>
-                                                </div>
+                                                <div className="flex justify-between text-white/70"><span>Subtotal</span><span>{formatCurrency(calculateBill().subtotal)}</span></div>
                                                 <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="number"
-                                                        value={bill.discount}
-                                                        onChange={(e) => setBill({ ...bill, discount: parseFloat(e.target.value) || 0 })}
-                                                        className="bg-white/10 border border-white/20 rounded-lg px-3 py-1 w-20 text-white"
-                                                        placeholder="0"
-                                                    />
-                                                    <select
-                                                        value={bill.discountType}
-                                                        onChange={(e) => setBill({ ...bill, discountType: e.target.value })}
-                                                        className="bg-white/10 border border-white/20 rounded-lg px-2 py-1 flex-1 text-white"
-                                                    >
+                                                    <input type="number" value={bill.discount} onChange={(e) => setBill({ ...bill, discount: parseFloat(e.target.value) || 0 })} className="bg-white/10 border border-white/20 rounded-lg px-3 py-1 w-20 text-white" placeholder="0" />
+                                                    <select value={bill.discountType} onChange={(e) => setBill({ ...bill, discountType: e.target.value })} className="bg-white/10 border border-white/20 rounded-lg px-2 py-1 flex-1 text-white">
                                                         <option value="percentage">% Discount</option>
                                                         <option value="fixed">Fixed Amount</option>
                                                     </select>
                                                 </div>
-                                                <div className="flex justify-between text-2xl font-bold pt-2 border-t border-white/20">
-                                                    <span>Total</span>
-                                                    <span>{formatCurrency(calculateBill().total)}</span>
-                                                </div>
-                                                
+                                                <div className="flex justify-between text-2xl font-bold pt-2 border-t border-white/20"><span>Total</span><span>{formatCurrency(calculateBill().total)}</span></div>
                                                 <div className="grid grid-cols-2 gap-3 mt-6">
-                                                    <button
-                                                        onClick={() => completeBill(true)}
-                                                        className="bg-[#8bc34a] hover:bg-[#7cb342] text-white py-4 rounded-xl font-bold shadow-lg transition-all"
-                                                    >
-                                                        Full Paid
-                                                    </button>
-                                                    <button
-                                                        onClick={() => completeBill(false)}
-                                                        className="bg-white/20 hover:bg-white/30 text-white py-4 rounded-xl font-bold transition-all"
-                                                    >
-                                                        Pay Later
-                                                    </button>
+                                                    <button onClick={() => completeBill(true)} className="bg-[#8bc34a] hover:bg-[#7cb342] text-white py-4 rounded-xl font-bold shadow-lg transition-all">Full Paid</button>
+                                                    <button onClick={() => completeBill(false)} className="bg-white/20 hover:bg-white/30 text-white py-4 rounded-xl font-bold transition-all">Pay Later</button>
                                                 </div>
                                             </div>
                                         )}
@@ -614,34 +855,24 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                             </div>
                         )}
 
-                        {/* Customers, Products, Reports, Modals - All Restored Exactly From Original File */}
                         {tab === 'customers' && (
-                            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/50 fade-in">
+                            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-4 sm:p-6 border border-white/50 fade-in">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-2xl font-bold text-stone-800">Customer Management</h2>
-                                    <button 
-                                        onClick={() => { setEditingCustomer(null); setShowCustomerModal(true); }}
-                                        className="bg-[#4b2c20] text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-2xl transition"
-                                    >
-                                        <Icon type="plus" /> Add Customer
+                                    <h2 className="text-xl sm:text-2xl font-bold text-stone-800">Customer Management</h2>
+                                    <button onClick={() => { setEditingCustomer(null); setShowCustomerModal(true); }} className="bg-[#4b2c20] text-white px-4 sm:px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-2xl transition">
+                                        <Icon type="plus" /><span className="hidden sm:inline">Add Customer</span>
                                     </button>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {customers.map(customer => (
                                         <div key={customer.id} className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm flex justify-between items-start group">
                                             <div>
                                                 <h3 className="font-bold text-stone-800 text-lg">{customer.name}</h3>
-                                                <p className="text-stone-400 flex items-center gap-1">
-                                                    <Icon type="share" className="w-3 h-3" /> {customer.phone || 'No phone'}
-                                                </p>
+                                                <p className="text-stone-400 flex items-center gap-1"><Icon type="share" className="w-3 h-3" />{customer.phone || 'No phone'}</p>
                                             </div>
                                             <div className="flex gap-2">
-                                                <button onClick={() => { setEditingCustomer(customer); setShowCustomerModal(true); }} className="text-stone-400 hover:text-[#4b2c20] p-2">
-                                                    <Icon type="edit" />
-                                                </button>
-                                                <button onClick={() => deleteCustomer(customer.id)} className="text-stone-400 hover:text-red-500 p-2">
-                                                    <Icon type="trash" />
-                                                </button>
+                                                <button onClick={() => { setEditingCustomer(customer); setShowCustomerModal(true); }} className="text-stone-400 hover:text-[#4b2c20] p-2"><Icon type="edit" /></button>
+                                                <button onClick={() => deleteCustomer(customer.id)} className="text-stone-400 hover:text-red-500 p-2"><Icon type="trash" /></button>
                                             </div>
                                         </div>
                                     ))}
@@ -650,17 +881,14 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                         )}
 
                         {tab === 'products' && (
-                            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-6 border border-white/50 fade-in">
+                            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-4 sm:p-6 border border-white/50 fade-in">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-2xl font-bold text-stone-800">Product Management</h2>
-                                    <button 
-                                        onClick={() => { setEditingProduct(null); setShowProductModal(true); }}
-                                        className="bg-[#4b2c20] text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-2xl transition"
-                                    >
-                                        <Icon type="plus" /> Add Product
+                                    <h2 className="text-xl sm:text-2xl font-bold text-stone-800">Product Management</h2>
+                                    <button onClick={() => { setEditingProduct(null); setShowProductModal(true); }} className="bg-[#4b2c20] text-white px-4 sm:px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:shadow-2xl transition">
+                                        <Icon type="plus" /><span className="hidden sm:inline">Add Product</span>
                                     </button>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {products.map(product => (
                                         <div key={product.id} className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm flex justify-between items-start">
                                             <div>
@@ -669,12 +897,8 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                                 <p className="text-[#4b2c20] font-bold text-xl">{formatCurrency(product.price)}</p>
                                             </div>
                                             <div className="flex gap-2">
-                                                <button onClick={() => { setEditingProduct(product); setShowProductModal(true); }} className="text-stone-400 hover:text-[#4b2c20] p-2">
-                                                    <Icon type="edit" />
-                                                </button>
-                                                <button onClick={() => deleteProduct(product.id)} className="text-stone-400 hover:text-red-500 p-2">
-                                                    <Icon type="trash" />
-                                                </button>
+                                                <button onClick={() => { setEditingProduct(product); setShowProductModal(true); }} className="text-stone-400 hover:text-[#4b2c20] p-2"><Icon type="edit" /></button>
+                                                <button onClick={() => deleteProduct(product.id)} className="text-stone-400 hover:text-red-500 p-2"><Icon type="trash" /></button>
                                             </div>
                                         </div>
                                     ))}
@@ -683,194 +907,108 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                         )}
 
                         {tab === 'reports' && (
-                            <div className="space-y-6 fade-in">
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50">
-                                        <div className="flex items-center gap-3 text-stone-400 mb-2">
-                                            <Icon type="trend" />
-                                            <span className="text-xs font-bold uppercase tracking-widest">Total Sales</span>
-                                        </div>
-                                        <p className="text-3xl font-black text-stone-800">{formatCurrency(stats.totalSales)}</p>
+                            <div className="space-y-4 sm:space-y-6 fade-in">
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                                    <div className="bg-white/80 backdrop-blur-md p-4 sm:p-6 rounded-2xl shadow-xl border border-white/50">
+                                        <div className="flex items-center gap-3 text-stone-400 mb-2"><Icon type="trend" /><span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Total Sales</span></div>
+                                        <p className="text-2xl sm:text-3xl font-black text-stone-800">{formatCurrency(stats.totalSales)}</p>
                                     </div>
-                                    <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50">
-                                        <div className="flex items-center gap-3 text-stone-400 mb-2">
-                                            <Icon type="check" className="text-green-500" />
-                                            <span className="text-xs font-bold uppercase tracking-widest">Collected</span>
-                                        </div>
-                                        <p className="text-3xl font-black text-green-600">{formatCurrency(stats.paidAmount)}</p>
+                                    <div className="bg-white/80 backdrop-blur-md p-4 sm:p-6 rounded-2xl shadow-xl border border-white/50">
+                                        <div className="flex items-center gap-3 text-stone-400 mb-2"><Icon type="check" className="text-green-500" /><span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Collected</span></div>
+                                        <p className="text-2xl sm:text-3xl font-black text-green-600">{formatCurrency(stats.paidAmount)}</p>
                                     </div>
-                                    <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50">
-                                        <div className="flex items-center gap-3 text-stone-400 mb-2">
-                                            <Icon type="clock" className="text-orange-500" />
-                                            <span className="text-xs font-bold uppercase tracking-widest">Outstanding</span>
-                                        </div>
-                                        <p className="text-3xl font-black text-orange-600">{formatCurrency(stats.unpaidAmount)}</p>
+                                    <div className="bg-white/80 backdrop-blur-md p-4 sm:p-6 rounded-2xl shadow-xl border border-white/50">
+                                        <div className="flex items-center gap-3 text-stone-400 mb-2"><Icon type="clock" className="text-orange-500" /><span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Outstanding</span></div>
+                                        <p className="text-2xl sm:text-3xl font-black text-orange-600">{formatCurrency(stats.unpaidAmount)}</p>
                                     </div>
-                                    <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-white/50">
-                                        <div className="flex items-center gap-3 text-stone-400 mb-2">
-                                            <Icon type="package" className="text-purple-500" />
-                                            <span className="text-xs font-bold uppercase tracking-widest">Total Bills</span>
-                                        </div>
-                                        <p className="text-3xl font-black text-purple-600">{stats.transactionCount}</p>
+                                    <div className="bg-white/80 backdrop-blur-md p-4 sm:p-6 rounded-2xl shadow-xl border border-white/50">
+                                        <div className="flex items-center gap-3 text-stone-400 mb-2"><Icon type="package" className="text-purple-500" /><span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Total Bills</span></div>
+                                        <p className="text-2xl sm:text-3xl font-black text-purple-600">{stats.transactionCount}</p>
                                     </div>
                                 </div>
-
                                 <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/50 overflow-hidden">
-                                    <div className="p-6 border-b border-stone-100 flex justify-between items-center">
-                                        <h3 className="font-bold text-xl text-stone-800">Recent Transactions</h3>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left">
-                                            <thead>
-                                                <tr className="bg-stone-50/50 text-stone-400 text-xs font-bold uppercase tracking-widest">
-                                                    <th className="px-6 py-4">Transaction Details</th>
-                                                    <th className="px-6 py-4">Status</th>
-                                                    <th className="px-6 py-4 text-right">Amount</th>
-                                                    <th className="px-6 py-4 text-right">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-stone-100">
-                                                {transactions.slice().reverse().map(t => (
-                                                    <tr key={t.id} className="hover:bg-stone-50/50 transition duration-300">
-                                                        <td className="px-6 py-4">
-                                                            <p className="font-bold text-stone-800">{t.customerName}</p>
-                                                            <p className="text-xs text-stone-400">{t.billNumber} • {new Date(t.date).toLocaleDateString()}</p>
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <button 
-                                                                onClick={() => togglePaymentStatus(t.id)}
-                                                                className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm transition-all duration-300 ${
-                                                                    t.isPaid 
-                                                                    ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                                                                    : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                                                                }`}
-                                                            >
-                                                                {t.isPaid ? (
-                                                                    <>
-                                                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                                                                        Paid
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></div>
-                                                                        Pending
-                                                                    </>
-                                                                )}
-                                                            </button>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-right">
-                                                            <p className="font-black text-stone-800">{formatCurrency(t.total)}</p>
-                                                            {t.remainingAmount > 0 && (
-                                                                <p className="text-[10px] text-orange-500 font-bold">Due: {formatCurrency(t.remainingAmount)}</p>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-4">
-                                                            <div className="flex justify-end gap-2">
-                                                                <button onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }} className="p-2 text-stone-400 hover:text-[#4b2c20] transition">
-                                                                    <Icon type="eye" className="w-5 h-5" />
-                                                                </button>
-                                                                <button onClick={() => shareBill(t)} className="p-2 text-stone-400 hover:text-[#8bc34a] transition">
-                                                                    <Icon type="share" className="w-5 h-5" />
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                    <div className="p-4 sm:p-6 border-b border-stone-100 flex flex-wrap justify-between items-center gap-2">
+    <h3 className="font-bold text-xl text-stone-800">Recent Transactions</h3>
+    <div className="flex gap-2">
+        <button onClick={() => exportAllData('monthly')} className="bg-[#4b2c20] text-white px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition shadow-md">
+            <Icon type="calendar" className="w-4 h-4" /> Monthly Report
+        </button>
+        <button onClick={() => exportAllData('transactions')} className="bg-stone-100 hover:bg-stone-200 text-stone-600 px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1 transition">
+            <Icon type="download" className="w-4 h-4" /> Export All
+        </button>
+    </div>
+</div>
+
+                                    <div className="divide-y divide-stone-100">
+                                        {transactions.slice().reverse().map(t => (
+                                            <div key={t.id} className="p-4 hover:bg-stone-50/50 transition">
+                                                <div className="flex justify-between items-start gap-2 mb-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-stone-800 truncate">{t.customerName}</p>
+                                                        <p className="text-xs text-stone-400">{t.billNumber} · {new Date(t.date).toLocaleDateString()}</p>
+                                                    </div>
+                                                    <div className="text-right flex-shrink-0">
+                                                        <p className="font-black text-stone-800">{formatCurrency(t.total)}</p>
+                                                        {t.remainingAmount > 0 && <p className="text-[10px] text-orange-500 font-bold">Due: {formatCurrency(t.remainingAmount)}</p>}
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <button onClick={() => togglePaymentStatus(t.id)} className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm transition-all ${t.isPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}>
+                                                        <div className={`w-1.5 h-1.5 rounded-full ${t.isPaid ? 'bg-green-500' : 'bg-orange-500 animate-pulse'}`}></div>
+                                                        {t.isPaid ? 'Paid' : 'Pending'}
+                                                    </button>
+                                                    <div className="flex gap-1">
+                                                        <button onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }} className="p-2 text-stone-400 hover:text-[#4b2c20] transition"><Icon type="eye" className="w-4 h-4" /></button>
+                                                        <button onClick={() => shareBill(t)} className="p-2 text-stone-400 hover:text-[#8bc34a] transition"><Icon type="share" className="w-4 h-4" /></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                         )}
+
+                        {tab === 'expenses' && <ExpenseAccount />}
                     </div>
 
-                    {/* ALL MODALS RESTORED FROM ORIGINAL FILE */}
+                    {/* CUSTOMER MODAL */}
                     {showCustomerModal && (
-                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
-                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
-                                <button onClick={() => setShowCustomerModal(false)} className="absolute top-6 right-6 text-stone-400 hover:text-stone-600">
-                                    <Icon type="x" />
-                                </button>
-                                <h2 className="text-2xl font-bold text-stone-800 mb-6">
-                                    {editingCustomer ? 'Edit Customer' : 'New Customer'}
-                                </h2>
-                                <form onSubmit={(e) => {
-                                    e.preventDefault();
-                                    const data = {
-                                        id: editingCustomer?.id || generateId(),
-                                        name: e.target.name.value,
-                                        phone: e.target.phone.value,
-                                        email: e.target.email.value,
-                                        address: e.target.address.value
-                                    };
-                                    editingCustomer ? updateCustomer(data) : addCustomer(data);
-                                }} className="space-y-4">
-                                    <div>
-                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Full Name</label>
-                                        <input name="name" defaultValue={editingCustomer?.name} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="John Doe" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Phone Number</label>
-                                        <input name="phone" defaultValue={editingCustomer?.phone} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="+91..." />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Email</label>
-                                        <input name="email" defaultValue={editingCustomer?.email} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="john@example.com" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Address</label>
-                                        <textarea name="address" defaultValue={editingCustomer?.address} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="Shipping address..." rows="2"></textarea>
-                                    </div>
-                                    <button className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4">
-                                        {editingCustomer ? 'Update Customer' : 'Save Customer'}
-                                    </button>
+                        <div className={modalCls}>
+                            <div className={modalBox}>
+                                <button onClick={() => setShowCustomerModal(false)} className="absolute top-5 right-5 text-stone-400 hover:text-stone-600"><Icon type="x" /></button>
+                                <h2 className="text-2xl font-bold text-stone-800 mb-6">{editingCustomer ? 'Edit Customer' : 'New Customer'}</h2>
+                                <form onSubmit={(e) => { e.preventDefault(); const data = { id: editingCustomer?.id || generateId(), name: e.target.name.value, phone: e.target.phone.value, email: e.target.email.value, address: e.target.address.value }; editingCustomer ? updateCustomer(data) : addCustomer(data); }} className="space-y-4">
+                                    <div><label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Full Name</label><input name="name" defaultValue={editingCustomer?.name} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="John Doe" /></div>
+                                    <div><label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Phone Number</label><input name="phone" defaultValue={editingCustomer?.phone} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="+91..." /></div>
+                                    <div><label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Email</label><input name="email" defaultValue={editingCustomer?.email} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="john@example.com" /></div>
+                                    <div><label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Address</label><textarea name="address" defaultValue={editingCustomer?.address} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="Shipping address..." rows="2"></textarea></div>
+                                    <button className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4">{editingCustomer ? 'Update Customer' : 'Save Customer'}</button>
                                 </form>
                             </div>
                         </div>
                     )}
 
+                    {/* PRODUCT MODAL */}
                     {showProductModal && (
-                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
-                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
-                                <button onClick={() => setShowProductModal(false)} className="absolute top-6 right-6 text-stone-400 hover:text-stone-600">
-                                    <Icon type="x" />
-                                </button>
-                                <h2 className="text-2xl font-bold text-stone-800 mb-6">
-                                    {editingProduct ? 'Edit Product' : 'New Product'}
-                                </h2>
-                                <form onSubmit={(e) => {
-                                    e.preventDefault();
-                                    const data = {
-                                        id: editingProduct?.id || generateId(),
-                                        code: e.target.code.value,
-                                        name: e.target.name.value,
-                                        price: parseFloat(e.target.price.value)
-                                    };
-                                    editingProduct ? updateProduct(data) : addProduct(data);
-                                }} className="space-y-4">
-                                    <div>
-                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Product Code</label>
-                                        <input name="code" defaultValue={editingProduct?.code} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="e.g. KC01" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Product Name</label>
-                                        <input name="name" defaultValue={editingProduct?.name} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="Kunafa Bite" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Price (₹)</label>
-                                        <input name="price" type="number" step="0.01" defaultValue={editingProduct?.price} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="0.00" />
-                                    </div>
-                                    <button className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4">
-                                        {editingProduct ? 'Update Product' : 'Save Product'}
-                                    </button>
+                        <div className={modalCls}>
+                            <div className={modalBox}>
+                                <button onClick={() => setShowProductModal(false)} className="absolute top-5 right-5 text-stone-400 hover:text-stone-600"><Icon type="x" /></button>
+                                <h2 className="text-2xl font-bold text-stone-800 mb-6">{editingProduct ? 'Edit Product' : 'New Product'}</h2>
+                                <form onSubmit={(e) => { e.preventDefault(); const data = { id: editingProduct?.id || generateId(), code: e.target.code.value, name: e.target.name.value, price: parseFloat(e.target.price.value) }; editingProduct ? updateProduct(data) : addProduct(data); }} className="space-y-4">
+                                    <div><label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Product Code</label><input name="code" defaultValue={editingProduct?.code} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="e.g. KC01" /></div>
+                                    <div><label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Product Name</label><input name="name" defaultValue={editingProduct?.name} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="Kunafa Bite" /></div>
+                                    <div><label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Price (₹)</label><input name="price" type="number" step="0.01" defaultValue={editingProduct?.price} required className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl px-4 py-3 outline-none transition" placeholder="0.00" /></div>
+                                    <button className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4">{editingProduct ? 'Update Product' : 'Save Product'}</button>
                                 </form>
                             </div>
                         </div>
                     )}
 
+                    {/* BILL PREVIEW */}
                     {showBillPreview && selectedTransaction && (
-                        <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50 fade-in">
-                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative">
+                        <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 fade-in">
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md overflow-hidden relative">
                                 <div className="bg-[#4b2c20] p-6 text-white text-center">
                                     <Icon type="check" className="w-12 h-12 mx-auto mb-2" />
                                     <h2 className="text-2xl font-bold">Transaction Saved!</h2>
@@ -881,19 +1019,10 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                         {generateBillText(selectedTransaction)}
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <button onClick={() => shareBill(selectedTransaction)} className="flex items-center justify-center gap-2 bg-[#25D366] text-white py-4 rounded-xl font-bold shadow-lg shadow-green-200">
-                                            <Icon type="share" /> WhatsApp
-                                        </button>
-                                        <button onClick={() => copyBill(selectedTransaction)} className="flex items-center justify-center gap-2 bg-stone-800 text-white py-4 rounded-xl font-bold">
-                                            <Icon type="check" /> Copy Bill
-                                        </button>
+                                        <button onClick={() => shareBill(selectedTransaction)} className="flex items-center justify-center gap-2 bg-[#25D366] text-white py-4 rounded-xl font-bold shadow-lg shadow-green-200"><Icon type="share" /> WhatsApp</button>
+                                        <button onClick={() => copyBill(selectedTransaction)} className="flex items-center justify-center gap-2 bg-stone-800 text-white py-4 rounded-xl font-bold"><Icon type="check" /> Copy Bill</button>
                                     </div>
-                                    <button 
-                                        onClick={() => { setShowBillPreview(false); clearBill(); }}
-                                        className="w-full mt-3 text-stone-400 font-bold py-2 hover:text-stone-600 transition"
-                                    >
-                                        Done
-                                    </button>
+                                    <button onClick={() => { setShowBillPreview(false); clearBill(); }} className="w-full mt-3 text-stone-400 font-bold py-2 hover:text-stone-600 transition">Done</button>
                                 </div>
                             </div>
                         </div>
@@ -901,68 +1030,34 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
 
                     {/* DETAILS MODAL */}
                     {showDetailsModal && selectedTransaction && (
-                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
-                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
-                                <button onClick={() => setShowDetailsModal(false)} className="absolute top-6 right-6 text-stone-400 hover:text-stone-600">
-                                    <Icon type="x" />
-                                </button>
+                        <div className={modalCls}>
+                            <div className={modalBox}>
+                                <button onClick={() => setShowDetailsModal(false)} className="absolute top-5 right-5 text-stone-400 hover:text-stone-600"><Icon type="x" /></button>
                                 <h2 className="text-2xl font-bold text-stone-800 mb-2">Transaction Details</h2>
                                 <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-6">{selectedTransaction.billNumber}</p>
-                                
                                 <div className="space-y-6">
                                     <div className="flex justify-between items-end border-b border-stone-100 pb-4">
-                                        <div>
-                                            <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Customer</p>
-                                            <p className="font-bold text-stone-800 text-lg">{selectedTransaction.customerName}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Status</p>
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedTransaction.isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                {selectedTransaction.isPaid ? 'Fully Paid' : 'Outstanding'}
-                                            </span>
+                                        <div><p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Customer</p><p className="font-bold text-stone-800 text-lg">{selectedTransaction.customerName}</p></div>
+                                        <div className="text-right"><p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Status</p>
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedTransaction.isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{selectedTransaction.isPaid ? 'Fully Paid' : 'Outstanding'}</span>
                                         </div>
                                     </div>
-
                                     <div className="space-y-3">
                                         <p className="text-xs text-stone-400 font-bold uppercase tracking-widest">Payments History</p>
                                         <div className="bg-stone-50 rounded-2xl p-4 space-y-3">
                                             {(selectedTransaction.payments || []).map((p, i) => (
                                                 <div key={i} className="flex justify-between items-center text-sm border-b border-stone-200 last:border-0 pb-2 last:pb-0">
-                                                    <div>
-                                                        <p className="font-bold text-stone-800">{formatCurrency(p.amount)}</p>
-                                                        <p className="text-[10px] text-stone-400">{new Date(p.date).toLocaleString()}</p>
-                                                    </div>
+                                                    <div><p className="font-bold text-stone-800">{formatCurrency(p.amount)}</p><p className="text-[10px] text-stone-400">{new Date(p.date).toLocaleString()}</p></div>
                                                     <span className="text-[10px] text-stone-500 font-medium">{p.method}</span>
                                                 </div>
                                             ))}
-                                            <div className="pt-2 flex justify-between font-bold text-stone-800">
-                                                <span>Total Collected</span>
-                                                <span>{formatCurrency(selectedTransaction.paidAmount)}</span>
-                                            </div>
-                                            {selectedTransaction.remainingAmount > 0 && (
-                                                <div className="flex justify-between font-bold text-orange-500">
-                                                    <span>Still Due</span>
-                                                    <span>{formatCurrency(selectedTransaction.remainingAmount)}</span>
-                                                </div>
-                                            )}
+                                            <div className="pt-2 flex justify-between font-bold text-stone-800"><span>Total Collected</span><span>{formatCurrency(selectedTransaction.paidAmount)}</span></div>
+                                            {selectedTransaction.remainingAmount > 0 && <div className="flex justify-between font-bold text-orange-500"><span>Still Due</span><span>{formatCurrency(selectedTransaction.remainingAmount)}</span></div>}
                                         </div>
                                     </div>
-
                                     <div className="grid grid-cols-2 gap-3 pt-4">
-                                        {selectedTransaction.remainingAmount > 0 && (
-                                            <button 
-                                                onClick={() => { setShowDetailsModal(false); setShowPaymentModal(true); }}
-                                                className="bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg"
-                                            >
-                                                Add Payment
-                                            </button>
-                                        )}
-                                        <button 
-                                            onClick={() => deleteTransaction(selectedTransaction.id)}
-                                            className="bg-red-50 text-red-500 py-4 rounded-xl font-bold flex items-center justify-center gap-2"
-                                        >
-                                            <Icon type="trash" /> Delete
-                                        </button>
+                                        {selectedTransaction.remainingAmount > 0 && <button onClick={() => { setShowDetailsModal(false); setShowPaymentModal(true); }} className="bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg">Add Payment</button>}
+                                        <button onClick={() => deleteTransaction(selectedTransaction.id)} className="bg-red-50 text-red-500 py-4 rounded-xl font-bold flex items-center justify-center gap-2"><Icon type="trash" /> Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -971,40 +1066,23 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
 
                     {/* PAYMENT MODAL */}
                     {showPaymentModal && selectedTransaction && (
-                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
-                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
-                                <button onClick={() => setShowPaymentModal(false)} className="absolute top-6 right-6 text-stone-400 hover:text-stone-600">
-                                    <Icon type="x" />
-                                </button>
+                        <div className={modalCls}>
+                            <div className={modalBox}>
+                                <button onClick={() => setShowPaymentModal(false)} className="absolute top-5 right-5 text-stone-400 hover:text-stone-600"><Icon type="x" /></button>
                                 <h2 className="text-2xl font-bold text-stone-800 mb-2">Record Payment</h2>
                                 <p className="text-sm text-stone-400 mb-6">Enter payment from {selectedTransaction.customerName}</p>
-                                
                                 <div className="space-y-4">
                                     <div className="bg-orange-50 p-4 rounded-2xl flex justify-between items-center mb-4">
                                         <p className="text-sm font-bold text-orange-700 uppercase tracking-widest">Total Remaining</p>
                                         <p className="text-2xl font-black text-orange-700">{formatCurrency(selectedTransaction.remainingAmount)}</p>
                                     </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Payment Amount</label>
+                                    <div><label className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1 block">Payment Amount</label>
                                         <div className="relative">
                                             <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-stone-400">₹</span>
-                                            <input 
-                                                type="number" 
-                                                value={paymentAmount}
-                                                onChange={(e) => setPaymentAmount(e.target.value)}
-                                                className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl pl-8 pr-4 py-4 text-xl font-bold outline-none transition" 
-                                                placeholder="0.00" 
-                                                autoFocus
-                                            />
+                                            <input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-stone-50 border-2 border-transparent focus:border-[#4b2c20] rounded-xl pl-8 pr-4 py-4 text-xl font-bold outline-none transition" placeholder="0.00" autoFocus />
                                         </div>
                                     </div>
-                                    <button 
-                                        onClick={addPayment}
-                                        disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
-                                        className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4 disabled:opacity-50"
-                                    >
-                                        Confirm Payment
-                                    </button>
+                                    <button onClick={addPayment} disabled={!paymentAmount || parseFloat(paymentAmount) <= 0} className="w-full bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-2xl transition-all duration-300 mt-4 disabled:opacity-50">Confirm Payment</button>
                                 </div>
                             </div>
                         </div>
@@ -1012,82 +1090,55 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
 
                     {/* ACCOUNTS MODAL */}
                     {showAccountsModal && (
-                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 fade-in">
-                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative">
-                                <div className="p-8 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
-                                    <div>
-                                        <h2 className="text-3xl font-black text-stone-800">Business Accounts</h2>
-                                        <p className="text-stone-400">Track all receivables and income</p>
-                                    </div>
-                                    <button onClick={() => setShowAccountsModal(false)} className="text-stone-400 hover:text-stone-600 p-2">
-                                        <Icon type="x" className="w-8 h-8" />
-                                    </button>
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 fade-in">
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative">
+                                <div className="p-5 sm:p-8 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
+                                    <div><h2 className="text-2xl sm:text-3xl font-black text-stone-800">Business Accounts</h2><p className="text-stone-400 text-sm">Track all receivables and income</p></div>
+                                    <button onClick={() => setShowAccountsModal(false)} className="text-stone-400 hover:text-stone-600 p-2"><Icon type="x" className="w-6 h-6 sm:w-8 sm:h-8" /></button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-8 bg-[#fdfcfb]">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                                        <div className="bg-white p-8 rounded-3xl shadow-xl border border-stone-100 relative overflow-hidden group">
-                                            <div className="absolute top-0 right-0 w-24 h-24 bg-green-500/5 rounded-full -mr-8 -mt-8 transition-all group-hover:scale-150"></div>
-                                            <Icon type="trend" className="text-green-500 mb-4 w-8 h-8" />
-                                            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Total Income</p>
-                                            <p className="text-4xl font-black text-stone-800">{formatCurrency(stats.paidAmount)}</p>
-                                        </div>
-                                        <div className="bg-white p-8 rounded-3xl shadow-xl border border-stone-100 relative overflow-hidden group">
-                                            <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/5 rounded-full -mr-8 -mt-8 transition-all group-hover:scale-150"></div>
-                                            <Icon type="clock" className="text-orange-500 mb-4 w-8 h-8" />
-                                            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Accounts Receivable</p>
-                                            <p className="text-4xl font-black text-stone-800">{formatCurrency(stats.unpaidAmount)}</p>
-                                        </div>
-                                        <div className="bg-white p-8 rounded-3xl shadow-xl border border-stone-100 relative overflow-hidden group">
-                                            <div className="absolute top-0 right-0 w-24 h-24 bg-[#4b2c20]/5 rounded-full -mr-8 -mt-8 transition-all group-hover:scale-150"></div>
-                                            <Icon type="package" className="text-[#4b2c20] mb-4 w-8 h-8" />
-                                            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">Total Billing</p>
-                                            <p className="text-4xl font-black text-stone-800">{formatCurrency(stats.totalSales)}</p>
-                                        </div>
+                                <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-[#fdfcfb]">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
+                                        {[{icon:'trend',color:'text-green-500',bg:'bg-green-500/5',label:'Total Income',val:stats.paidAmount},{icon:'clock',color:'text-orange-500',bg:'bg-orange-500/5',label:'Accounts Receivable',val:stats.unpaidAmount},{icon:'package',color:'text-[#4b2c20]',bg:'bg-[#4b2c20]/5',label:'Total Billing',val:stats.totalSales}].map(s=>(
+                                            <div key={s.label} className="bg-white p-6 rounded-3xl shadow-xl border border-stone-100 relative overflow-hidden group">
+                                                <div className={`absolute top-0 right-0 w-24 h-24 ${s.bg} rounded-full -mr-8 -mt-8 transition-all group-hover:scale-150`}></div>
+                                                <Icon type={s.icon} className={`${s.color} mb-4 w-8 h-8`} />
+                                                <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-1">{s.label}</p>
+                                                <p className="text-3xl sm:text-4xl font-black text-stone-800">{formatCurrency(s.val)}</p>
+                                            </div>
+                                        ))}
                                     </div>
-
                                     <div className="bg-white rounded-3xl shadow-xl border border-stone-100 overflow-hidden">
-                                        <div className="p-6 border-b border-stone-100 bg-stone-50/50 flex justify-between items-center">
+                                        <div className="p-4 sm:p-6 border-b border-stone-100 bg-stone-50/50 flex justify-between items-center">
                                             <h3 className="font-bold text-xl text-stone-800">Ledger Summary</h3>
-                                            <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">{transactions.length} Transactions Found</span>
+                                            <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">{transactions.length} Transactions</span>
                                         </div>
                                         {transactions.length === 0 ? (
-                                            <div className="p-20 text-center text-stone-300 italic">No ledger entries yet</div>
+                                            <div className="p-16 text-center text-stone-300 italic">No ledger entries yet</div>
                                         ) : (
                                             <div className="divide-y divide-stone-100">
                                                 {transactions.slice().reverse().map(t => (
-                                                    <div key={t.id} className="p-6 flex flex-wrap justify-between items-center hover:bg-stone-50/50 transition cursor-pointer" onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }}>
-                                                        <div className="flex gap-4 items-center min-w-[250px]">
-                                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${t.isPaid ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
-                                                                <Icon type={t.isPaid ? 'check' : 'clock'} />
+                                                    <div key={t.id} className="p-4 sm:p-6 hover:bg-stone-50/50 transition cursor-pointer" onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }}>
+                                                        <div className="flex justify-between items-start gap-3 mb-2">
+                                                            <div className="flex gap-3 items-center flex-1 min-w-0">
+                                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${t.isPaid ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
+                                                                    <Icon type={t.isPaid ? 'check' : 'clock'} className="w-5 h-5" />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="font-black text-stone-800 truncate">{t.customerName}</p>
+                                                                    <p className="text-xs text-stone-400 font-bold uppercase tracking-widest">{t.billNumber} · {new Date(t.date).toLocaleDateString()}</p>
+                                                                </div>
                                                             </div>
-                                                            <div>
-                                                                <p className="font-black text-stone-800 text-lg">{t.customerName}</p>
-                                                                <p className="text-xs text-stone-400 font-bold uppercase tracking-widest">{t.billNumber} • {new Date(t.date).toLocaleDateString()}</p>
-                                                            </div>
+                                                            <p className="font-black text-stone-800 text-lg flex-shrink-0">{formatCurrency(t.total)}</p>
                                                         </div>
-                                                        <div className="flex items-center gap-12">
-                                                            <div className="text-right">
-                                                                <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Paid</p>
-                                                                <p className="font-bold text-green-600">{formatCurrency(t.paidAmount)}</p>
+                                                        <div className="flex justify-between items-center pl-13">
+                                                            <div className="flex gap-3 text-sm">
+                                                                <span className="text-green-600 font-bold">Paid: {formatCurrency(t.paidAmount)}</span>
+                                                                {t.remainingAmount > 0 && <span className="text-orange-500 font-bold">Due: {formatCurrency(t.remainingAmount)}</span>}
                                                             </div>
-                                                            <div className="text-right">
-                                                                <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Unpaid</p>
-                                                                <p className={`font-bold ${t.remainingAmount > 0 ? 'text-orange-500' : 'text-stone-300'}`}>{formatCurrency(t.remainingAmount)}</p>
-                                                            </div>
-                                                            <div className="text-right min-w-[120px]">
-                                                                <p className="text-xs text-stone-400 font-bold uppercase tracking-widest mb-1">Total Bill</p>
-                                                                <p className="font-black text-stone-800 text-xl">{formatCurrency(t.total)}</p>
-                                                            </div>
-                                                            <div className="flex gap-2 ml-4">
-                                                                <button onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded">
-                                                                    <Icon type="eye" className="w-4 h-4" />
-                                                                </button>
-                                                                <button onClick={() => shareBill(t)} className="p-2 text-green-600 hover:bg-green-50 rounded">
-                                                                    <Icon type="share" className="w-4 h-4" />
-                                                                </button>
-                                                                <button onClick={() => deleteTransaction(t.id)} className="p-2 text-red-600 hover:bg-red-50 rounded">
-                                                                    <Icon type="trash" className="w-4 h-4" />
-                                                                </button>
+                                                            <div className="flex gap-1">
+                                                                <button onClick={(e)=>{e.stopPropagation();setSelectedTransaction(t);setShowDetailsModal(true);}} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Icon type="eye" className="w-4 h-4" /></button>
+                                                                <button onClick={(e)=>{e.stopPropagation();shareBill(t);}} className="p-2 text-green-600 hover:bg-green-50 rounded-lg"><Icon type="share" className="w-4 h-4" /></button>
+                                                                <button onClick={(e)=>{e.stopPropagation();deleteTransaction(t.id);}} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Icon type="trash" className="w-4 h-4" /></button>
                                                             </div>
                                                         </div>
                                                     </div>
