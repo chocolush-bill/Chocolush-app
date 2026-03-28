@@ -888,20 +888,37 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                 setSelectedTransaction(null);
             };
             const generateBillText = (t) => {
-                let text = `\n----------------------------------------\n         CHOCOLUSH          \n     Premium Kunafa Chocolates     \n----------------------------------------\n\nBill No: ${t.billNumber}\nDate: ${new Date(t.date).toLocaleString('en-IN')}\nCustomer: ${t.customerName}\n`;
+                // Helper: right-align a value string within a field of given width
+                const rpad = (str, width) => str.padStart(width);
+                // Helper: build a dot-filled line: "LABEL (N pcs)\nMRP X.XX @ Y.XX ............ Z.ZZ"
+                const LINE_WIDTH = 40;
+
+                let text = `----------------------------------------\n         CHOCOLUSH          \n     Premium Kunafa Chocolates     \n----------------------------------------\n\nBill No: ${t.billNumber}\nDate: ${new Date(t.date).toLocaleString('en-IN')}\nCustomer: ${t.customerName}\n`;
                 if (t.customerPhone) text += `Phone: ${t.customerPhone}\n`;
-                text += `\n----------------------------------------\nITEMS:\n----------------------------------------\n`;
-                t.items.forEach((item, i) => {
+                text += `\n----------------------------------------   \nITEMS:\n----------------------------------------\n`;
+
+                t.items.forEach((item) => {
                     const unitPrice = (item.offerPrice !== null && item.offerPrice !== undefined) ? item.offerPrice : item.product.price;
+                    const mrp = item.product.price;
                     const base = unitPrice * item.quantity;
                     const d = item.itemDiscountType === 'percent' ? (base * (item.itemDiscount || 0)) / 100 : (item.itemDiscount || 0);
                     const net = base - Math.min(d, base);
-                    text += `${i + 1}. ${item.product.name}\n   ${item.quantity} x Rs.${unitPrice.toFixed(2)}`;
-                    if (unitPrice < item.product.price) text += ` (MRP Rs.${item.product.price.toFixed(2)}/pc)`;
-                    if (d > 0) text += ` - Disc: Rs.${d.toFixed(2)}`;
-                    text += ` = Rs.${net.toFixed(2)}\n`;
+
+                    // Short name: use product name as-is (users can rename products to short names)
+                    const nameLine = `${item.product.name} (${item.quantity} pcs)`;
+                    text += `${nameLine}\n`;
+
+                    // Build: MRP X.XX @ Y.XX ............ Z.ZZ
+                    const mrpStr = `MRP ${mrp.toFixed(2)} @ ${unitPrice.toFixed(2)}`;
+                    const totalStr = net.toFixed(2);
+                    // dots fill remaining space
+                    const dotsSpace = LINE_WIDTH - mrpStr.length - totalStr.length - 1;
+                    const dots = dotsSpace > 2 ? '.'.repeat(dotsSpace) : ' ';
+                    text += `${mrpStr} ${dots} ${totalStr}\n\n`;
                 });
-                text += `\n----------------------------------------\nMRP Total:   Rs.${(t.subtotal||0).toFixed(2)}\n`;
+
+                text += `----------------------------------------\n`;
+                text += `MRP Total:   Rs.${(t.subtotal||0).toFixed(2)}\n`;
                 if ((t.offerDiscountTotal||0) > 0) text += `Offer Disc:  -Rs.${t.offerDiscountTotal.toFixed(2)}\n`;
                 if ((t.itemDiscountTotal||0) > 0) text += `Item Disc:   -Rs.${t.itemDiscountTotal.toFixed(2)}\n`;
                 if ((t.discount||0) > 0) text += `Trade Disc:  -Rs.${t.discount.toFixed(2)}\n`;
