@@ -681,6 +681,331 @@
         // END EXPENSE ACCOUNT
         // ══════════════════════════════════════════════════
 
+        // ══════════════════════════════════════════════════
+        // PROFITS TAB COMPONENT
+        // ══════════════════════════════════════════════════
+        const SUGGESTED_INGREDIENTS = {
+            'Big Kunafa Chocolate': [
+                { name: 'Kunafa dough', amount: 8 },
+                { name: 'Chocolate (dark/milk)', amount: 25 },
+                { name: 'Pistachio filling', amount: 12 },
+                { name: 'Cream/butter', amount: 5 },
+                { name: 'Sugar syrup', amount: 3 },
+            ],
+            'Med. Kunafa Chocolate': [
+                { name: 'Kunafa dough', amount: 4 },
+                { name: 'Chocolate (dark/milk)', amount: 14 },
+                { name: 'Pistachio filling', amount: 6 },
+                { name: 'Cream/butter', amount: 3 },
+                { name: 'Sugar syrup', amount: 2 },
+            ],
+            'Mini Kunafa Bites': [
+                { name: 'Kunafa dough', amount: 1.5 },
+                { name: 'Chocolate (dark/milk)', amount: 5 },
+                { name: 'Pistachio filling', amount: 2 },
+                { name: 'Cream/butter', amount: 1 },
+                { name: 'Sugar syrup', amount: 0.5 },
+            ],
+        };
+
+        const ProfitsTab = ({ products, transactions }) => {
+            const [subTab, setSubTab] = useState('costs');
+            const [costSheets, setCostSheets] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('choco_cost_sheets') || '{}'); } catch { return {}; }
+            });
+            const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || null);
+            const [newIngName, setNewIngName] = useState('');
+            const [newIngAmt, setNewIngAmt] = useState('');
+            const [editingIngIdx, setEditingIngIdx] = useState(null);
+            const [editIngForm, setEditIngForm] = useState({ name: '', amount: '' });
+
+            const saveCostSheets = (data) => {
+                setCostSheets(data);
+                localStorage.setItem('choco_cost_sheets', JSON.stringify(data));
+            };
+
+            const selectedProduct = products.find(p => p.id === selectedProductId);
+            const getSheet = (pid) => costSheets[pid] || { ingredients: [], packaging: 0, labor: 0, overhead: 0 };
+            const sheet = selectedProduct ? getSheet(selectedProductId) : null;
+            const totalIngredientCost = sheet ? sheet.ingredients.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0) : 0;
+            const totalCostPrice = sheet ? totalIngredientCost + (parseFloat(sheet.packaging) || 0) + (parseFloat(sheet.labor) || 0) + (parseFloat(sheet.overhead) || 0) : 0;
+            const sellingPrice = selectedProduct?.price || 0;
+            const grossProfit = sellingPrice - totalCostPrice;
+            const marginPct = sellingPrice > 0 ? (grossProfit / sellingPrice) * 100 : 0;
+
+            const updateOtherCost = (field, val) => {
+                const updated = { ...costSheets, [selectedProductId]: { ...getSheet(selectedProductId), [field]: parseFloat(val) || 0 } };
+                saveCostSheets(updated);
+            };
+
+            const addIngredient = () => {
+                if (!newIngName.trim() || !newIngAmt) return;
+                const cur = getSheet(selectedProductId);
+                const updated = { ...costSheets, [selectedProductId]: { ...cur, ingredients: [...cur.ingredients, { name: newIngName.trim(), amount: parseFloat(newIngAmt) || 0 }] } };
+                saveCostSheets(updated);
+                setNewIngName(''); setNewIngAmt('');
+            };
+
+            const removeIngredient = (idx) => {
+                const cur = getSheet(selectedProductId);
+                const ings = cur.ingredients.filter((_, i) => i !== idx);
+                saveCostSheets({ ...costSheets, [selectedProductId]: { ...cur, ingredients: ings } });
+            };
+
+            const saveEditIng = (idx) => {
+                const cur = getSheet(selectedProductId);
+                const ings = cur.ingredients.map((ing, i) => i === idx ? { name: editIngForm.name, amount: parseFloat(editIngForm.amount) || 0 } : ing);
+                saveCostSheets({ ...costSheets, [selectedProductId]: { ...cur, ingredients: ings } });
+                setEditingIngIdx(null);
+            };
+
+            const applySuggestions = () => {
+                if (!selectedProduct) return;
+                const suggested = SUGGESTED_INGREDIENTS[selectedProduct.name];
+                if (!suggested) { alert('No suggestions available for this product.'); return; }
+                const cur = getSheet(selectedProductId);
+                const existingNames = cur.ingredients.map(i => i.name.toLowerCase());
+                const toAdd = suggested.filter(s => !existingNames.includes(s.name.toLowerCase()));
+                if (toAdd.length === 0) { alert('All suggested ingredients are already added.'); return; }
+                saveCostSheets({ ...costSheets, [selectedProductId]: { ...cur, ingredients: [...cur.ingredients, ...toAdd] } });
+            };
+
+            const getBillProfit = (t) => {
+                let costTotal = 0;
+                t.items.forEach(item => {
+                    const pid = item.product.id;
+                    const cs = getSheet(pid);
+                    const ingCost = cs.ingredients.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+                    const costPerPc = ingCost + (parseFloat(cs.packaging) || 0) + (parseFloat(cs.labor) || 0) + (parseFloat(cs.overhead) || 0);
+                    costTotal += costPerPc * item.quantity;
+                });
+                return { revenue: t.total, cost: costTotal, profit: t.total - costTotal };
+            };
+
+            const getMonthlyPL = () => {
+                const monthMap = {};
+                transactions.forEach(t => {
+                    const key = new Date(t.date).toLocaleString('default', { month: 'long', year: 'numeric' });
+                    if (!monthMap[key]) monthMap[key] = { revenue: 0, cost: 0, collected: 0 };
+                    const bp = getBillProfit(t);
+                    monthMap[key].revenue += bp.revenue;
+                    monthMap[key].cost += bp.cost;
+                    monthMap[key].collected += t.paidAmount;
+                });
+                return Object.entries(monthMap).map(([month, d]) => ({
+                    month, revenue: d.revenue, cost: d.cost,
+                    profit: d.revenue - d.cost, collected: d.collected,
+                    margin: d.revenue > 0 ? ((d.revenue - d.cost) / d.revenue * 100) : 0
+                }));
+            };
+
+            const monthlyPL = getMonthlyPL();
+            const allExpenses = (() => { try { return JSON.parse(localStorage.getItem('choco_expenses') || '[]'); } catch { return []; } })();
+            const cardCls = "bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-white/50 overflow-hidden";
+            const subBtnCls = (active) => `px-4 py-2 rounded-xl text-xs font-bold transition-all ${active ? 'bg-[#3d1f0f] text-white shadow' : 'text-stone-500 hover:bg-stone-100'}`;
+
+            return (
+                <div className="space-y-4 fade-in">
+                    <div className="flex gap-2 bg-white/60 backdrop-blur-md rounded-2xl p-2 shadow border border-white/50 overflow-x-auto">
+                        {[['costs','Cost Sheets'],['bills','Bill Profits'],['monthly','Monthly P&L'],['expenses','Expenses']].map(([k,label])=>(
+                            <button key={k} onClick={()=>setSubTab(k)} className={subBtnCls(subTab===k)}>{label}</button>
+                        ))}
+                    </div>
+
+                    {subTab === 'costs' && (
+                        <div className="space-y-4">
+                            <div className={cardCls}>
+                                <div className="p-4 border-b border-stone-100">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Select Product</p>
+                                    <div className="flex gap-2 flex-wrap">
+                                        {products.map(p => (
+                                            <button key={p.id} onClick={()=>setSelectedProductId(p.id)}
+                                                className={`px-3 py-2 rounded-xl text-sm font-semibold transition-all border ${selectedProductId===p.id ? 'bg-[#3d1f0f] text-white border-[#3d1f0f] shadow' : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-[#c47c3a]'}`}>
+                                                {p.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {selectedProduct && (
+                                    <div className="p-4 space-y-5">
+                                        <div className="grid grid-cols-3 gap-3">
+                                            {[
+                                                { label: 'Cost Price', val: formatCurrency(totalCostPrice), color: 'text-red-600' },
+                                                { label: 'Selling Price', val: formatCurrency(sellingPrice), color: 'text-stone-800' },
+                                                { label: 'Gross Profit', val: formatCurrency(grossProfit), color: grossProfit >= 0 ? 'text-green-600' : 'text-red-600' },
+                                            ].map(s => (
+                                                <div key={s.label} className="bg-stone-50 rounded-xl p-3 text-center">
+                                                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">{s.label}</p>
+                                                    <p className={`text-base font-black ${s.color}`}>{s.val}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between text-xs text-stone-500 mb-1">
+                                                <span className="font-semibold">Margin</span>
+                                                <span className={`font-black ${marginPct >= 30 ? 'text-green-600' : marginPct >= 15 ? 'text-amber-500' : 'text-red-500'}`}>{marginPct.toFixed(1)}%</span>
+                                            </div>
+                                            <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                                                <div className="h-full rounded-full transition-all" style={{width:`${Math.max(0,Math.min(100,marginPct))}%`, background: marginPct>=30?'#16a34a':marginPct>=15?'#f59e0b':'#dc2626'}}></div>
+                                            </div>
+                                            <p className="text-[10px] text-stone-400 mt-1">{marginPct>=30?'Healthy margin':marginPct>=15?'Moderate — consider reducing costs':'Low margin — review pricing or costs'}</p>
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <p className="text-xs font-bold uppercase tracking-widest text-stone-500">Raw Materials</p>
+                                                <button onClick={applySuggestions} className="text-[11px] font-bold text-[#c47c3a] hover:text-[#3d1f0f] transition px-2 py-1 rounded-lg hover:bg-amber-50 border border-amber-200">Apply Suggestions</button>
+                                            </div>
+                                            {sheet.ingredients.length === 0 && (
+                                                <p className="text-xs text-stone-400 italic py-2">No ingredients yet. Hit Apply Suggestions or add manually below.</p>
+                                            )}
+                                            <div className="space-y-1.5">
+                                                {sheet.ingredients.map((ing, idx) => (
+                                                    <div key={idx} className="flex items-center gap-2 bg-stone-50 rounded-xl px-3 py-2">
+                                                        {editingIngIdx === idx ? (
+                                                            <>
+                                                                <input value={editIngForm.name} onChange={e=>setEditIngForm({...editIngForm,name:e.target.value})} className="flex-1 text-sm bg-white border border-stone-200 rounded-lg px-2 py-1 outline-none" />
+                                                                <input type="number" value={editIngForm.amount} onChange={e=>setEditIngForm({...editIngForm,amount:e.target.value})} className="w-20 text-sm bg-white border border-stone-200 rounded-lg px-2 py-1 outline-none text-right" />
+                                                                <button onClick={()=>saveEditIng(idx)} className="text-green-600 text-xs font-bold px-2">Save</button>
+                                                                <button onClick={()=>setEditingIngIdx(null)} className="text-stone-400 text-xs px-1">Cancel</button>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span className="flex-1 text-sm text-stone-700 font-medium">{ing.name}</span>
+                                                                <span className="text-sm font-black text-[#3d1f0f] mono">Rs.{(parseFloat(ing.amount)||0).toFixed(2)}</span>
+                                                                <button onClick={()=>{setEditingIngIdx(idx);setEditIngForm({name:ing.name,amount:ing.amount});}} className="text-stone-300 hover:text-[#c47c3a] transition"><Icon type="edit" className="w-3.5 h-3.5"/></button>
+                                                                <button onClick={()=>removeIngredient(idx)} className="text-stone-300 hover:text-red-500 transition"><Icon type="trash" className="w-3.5 h-3.5"/></button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-2 mt-2">
+                                                <input value={newIngName} onChange={e=>setNewIngName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addIngredient()} placeholder="Ingredient name" className="flex-1 text-sm px-3 py-2 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#c47c3a]" />
+                                                <input type="number" value={newIngAmt} onChange={e=>setNewIngAmt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addIngredient()} placeholder="Rs/pc" className="w-20 text-sm px-3 py-2 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#c47c3a] text-right" />
+                                                <button onClick={addIngredient} className="bg-[#3d1f0f] text-white px-3 py-2 rounded-xl font-bold text-sm hover:bg-[#6b3a22] transition">+</button>
+                                            </div>
+                                            <div className="flex justify-between text-xs font-bold mt-2 px-1">
+                                                <span className="text-stone-400 uppercase tracking-wider">Total Raw Material</span>
+                                                <span className="text-[#3d1f0f]">Rs.{totalIngredientCost.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Other Costs (per piece)</p>
+                                            <div className="space-y-2">
+                                                {[['packaging','Packaging'],['labor','Labor'],['overhead','Overhead']].map(([field,label])=>(
+                                                    <div key={field} className="flex items-center gap-3 bg-stone-50 rounded-xl px-3 py-2">
+                                                        <span className="flex-1 text-sm text-stone-600 font-medium">{label}</span>
+                                                        <span className="text-stone-400 text-sm">Rs.</span>
+                                                        <input type="number" step="0.01" min="0"
+                                                            value={sheet[field] || ''}
+                                                            onChange={e=>updateOtherCost(field, e.target.value)}
+                                                            placeholder="0.00"
+                                                            className="w-24 text-sm font-bold text-right bg-white border border-stone-200 rounded-lg px-2 py-1 outline-none focus:border-[#c47c3a]" />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {subTab === 'bills' && (
+                        <div className={cardCls}>
+                            <div className="p-4 border-b border-stone-100 flex justify-between items-center">
+                                <h3 className="font-bold text-stone-800">Profit per Bill</h3>
+                                <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">{transactions.length} bills</span>
+                            </div>
+                            {transactions.length === 0 ? (
+                                <div className="p-12 text-center text-stone-300 italic text-sm">No transactions yet</div>
+                            ) : (
+                                <div className="divide-y divide-stone-100">
+                                    {transactions.slice().reverse().map(t => {
+                                        const { revenue, cost, profit } = getBillProfit(t);
+                                        const mg = revenue > 0 ? (profit/revenue*100) : 0;
+                                        const noCostData = cost === 0;
+                                        return (
+                                            <div key={t.id} className="p-4 hover:bg-stone-50/50 transition">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <p className="font-bold text-stone-800 text-sm">{t.customerName}</p>
+                                                        <p className="text-[10px] text-stone-400 mono">{t.billNumber} · {new Date(t.date).toLocaleDateString()}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className={`font-black text-base ${profit>=0?'text-green-600':'text-red-600'}`}>{formatCurrency(profit)}</p>
+                                                        <p className="text-[10px] text-stone-400">{mg.toFixed(1)}% margin</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-4 text-xs text-stone-500">
+                                                    <span>Revenue: <span className="font-bold text-stone-700">{formatCurrency(revenue)}</span></span>
+                                                    <span>Cost: <span className="font-bold text-stone-700">{noCostData ? <span className="text-amber-500 italic">Set costs first</span> : formatCurrency(cost)}</span></span>
+                                                </div>
+                                                <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden mt-2">
+                                                    <div className="h-full rounded-full" style={{width:`${Math.max(0,Math.min(100,mg))}%`,background:mg>=30?'#16a34a':mg>=15?'#f59e0b':'#dc2626'}}></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {subTab === 'monthly' && (
+                        <div className="space-y-4">
+                            {monthlyPL.length === 0 ? (
+                                <div className={`${cardCls} p-12 text-center text-stone-300 italic text-sm`}>No data yet</div>
+                            ) : monthlyPL.map(m => {
+                                const expensesThisMonth = allExpenses.filter(e => {
+                                    const d = new Date(e.date + 'T00:00:00');
+                                    return d.toLocaleString('default',{month:'long',year:'numeric'}) === m.month;
+                                }).reduce((s,e)=>s+e.amount,0);
+                                const netProfit = m.profit - expensesThisMonth;
+                                return (
+                                    <div key={m.month} className={cardCls}>
+                                        <div className="p-4 border-b border-stone-100 flex justify-between items-center">
+                                            <h3 className="font-bold text-stone-800">{m.month}</h3>
+                                            <span className={`text-sm font-black ${netProfit>=0?'text-green-600':'text-red-600'}`}>Net: {formatCurrency(netProfit)}</span>
+                                        </div>
+                                        <div className="p-4 grid grid-cols-2 gap-3">
+                                            {[
+                                                {label:'Revenue',val:m.revenue,color:'text-stone-800'},
+                                                {label:'Product Cost',val:m.cost,color:'text-red-500'},
+                                                {label:'Gross Profit',val:m.profit,color:m.profit>=0?'text-green-600':'text-red-600'},
+                                                {label:'Expenses',val:expensesThisMonth,color:'text-amber-600'},
+                                                {label:'Net Profit',val:netProfit,color:netProfit>=0?'text-green-700':'text-red-700'},
+                                                {label:'Collected',val:m.collected,color:'text-blue-600'},
+                                            ].map(s=>(
+                                                <div key={s.label} className="bg-stone-50 rounded-xl p-3">
+                                                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-0.5">{s.label}</p>
+                                                    <p className={`text-sm font-black ${s.color}`}>{formatCurrency(s.val)}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="px-4 pb-4">
+                                            <div className="flex justify-between text-xs text-stone-500 mb-1">
+                                                <span>Gross Margin</span>
+                                                <span className="font-bold">{m.margin.toFixed(1)}%</span>
+                                            </div>
+                                            <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
+                                                <div className="h-full rounded-full" style={{width:`${Math.max(0,Math.min(100,m.margin))}%`,background:m.margin>=30?'#16a34a':m.margin>=15?'#f59e0b':'#dc2626'}}></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {subTab === 'expenses' && <ExpenseAccount />}
+                </div>
+            );
+        };
+        // ══════════════════════════════════════════════════
+        // END PROFITS TAB
+        // ══════════════════════════════════════════════════
+
+
         const App = () => {
             const [tab, setTab] = useState('billing');
             const [customers, setCustomers] = useState([]);
@@ -977,10 +1302,10 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
 
                     {/* Tabs */}
                     <div className="max-w-7xl mx-auto mb-4 flex tab-bar gap-1 overflow-x-auto">
-                        {['billing', 'customers', 'products', 'reports', 'expenses'].map((t) => (
+                        {['billing', 'customers', 'products', 'reports', 'profits'].map((t) => (
                             <button key={t} onClick={() => setTab(t)}
                                 className={`tab-item flex-1 whitespace-nowrap py-2.5 px-3 capitalize ${tab === t ? 'active' : ''}`}>
-                                {t === 'expenses' ? 'Expenses' : t}
+                                {t === 'profits' ? 'Profits' : t}
                             </button>
                         ))}
                     </div>
@@ -1234,7 +1559,7 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                             </div>
                         )}
 
-                        {tab === 'expenses' && <ExpenseAccount />}
+                        {tab === 'profits' && <ProfitsTab products={products} transactions={transactions} />}
                     </div>
 
                     {/* CUSTOMER MODAL */}
