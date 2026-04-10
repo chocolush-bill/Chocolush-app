@@ -178,11 +178,44 @@
         .bill-panel::-webkit-scrollbar-thumb { background: rgba(249,244,236,0.2); }
 
         /* Watermark/logo texture */
-        .header-bg {
-            background: var(--bark);
-            position: relative;
-            overflow: hidden;
+        .header-bg { background: var(--bark); position: relative; overflow: hidden; }
+
+        /* Hide number input spinners */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+
+        /* Dark mode */
+        body.dark {
+            --ink: #f0e6d3; --bark: #d4924a; --mocha: #e8c89a;
+            --caramel: #f0a855; --cream: #1a0f06; --parchment: #120a03;
+            --sage: #9ab88a; --blush: #3d2410;
+            background-color: #120a03;
         }
+        body.dark .card { background: rgba(26,15,6,0.95); border-color: rgba(196,124,58,0.25); }
+        body.dark .card-dark { background: #0b0602; border-color: rgba(196,124,58,0.3); }
+        body.dark input, body.dark select, body.dark textarea {
+            background: rgba(26,15,6,0.9) !important;
+            border-color: rgba(196,124,58,0.3) !important;
+            color: #f0e6d3 !important;
+        }
+        body.dark input:focus, body.dark select:focus, body.dark textarea:focus { background: #1a0f06 !important; }
+        body.dark .tab-bar { background: rgba(26,15,6,0.85); border-color: rgba(196,124,58,0.2); }
+        body.dark .tab-item { color: #e8c89a; }
+        body.dark .modal-box { background: #1a0f06 !important; border-color: rgba(196,124,58,0.25) !important; }
+        body.dark .bg-white { background: #1a0f06 !important; }
+        body.dark .bg-stone-50, body.dark .bg-stone-50\/50 { background: rgba(30,18,9,0.8) !important; }
+        body.dark .bg-white\/80, body.dark .bg-white\/60 { background: rgba(20,10,3,0.9) !important; }
+        body.dark .text-stone-800 { color: #f0e6d3 !important; }
+        body.dark .text-stone-700 { color: #ddc9a8 !important; }
+        body.dark .text-stone-600 { color: #c4a882 !important; }
+        body.dark .text-stone-500, body.dark .text-stone-400 { color: #9a7850 !important; }
+        body.dark .border-stone-100 { border-color: rgba(196,124,58,0.15) !important; }
+        body.dark .divide-stone-100 > * + * { border-color: rgba(196,124,58,0.15) !important; }
+        body.dark .bg-orange-50 { background: rgba(120,60,10,0.25) !important; }
+        body.dark .bg-green-100 { background: rgba(50,100,30,0.25) !important; }
+        body.dark .bg-orange-100 { background: rgba(120,60,10,0.25) !important; }
+        body.dark select option { background: #1a0f06; color: #f0e6d3; }
     </style>
 </head>
 <body>
@@ -215,6 +248,11 @@
                 download: "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4",
                 chevDown: "M19 9l-7 7-7-7",
                 chevUp: "M5 15l7-7 7 7",
+                moon: "M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z",
+                sun: "M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z",
+                upload: "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12",
+                bell: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
+                filter: "M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z",
             };
             return (
                 <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -716,6 +754,7 @@
             const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || null);
             const [newIngName, setNewIngName] = useState('');
             const [newIngAmt, setNewIngAmt] = useState('');
+            const [newIngBatch, setNewIngBatch] = useState('');
             const [editingIngIdx, setEditingIngIdx] = useState(null);
             const [editIngForm, setEditIngForm] = useState({ name: '', amount: '' });
 
@@ -740,10 +779,12 @@
 
             const addIngredient = () => {
                 if (!newIngName.trim() || !newIngAmt) return;
+                const batchSize = parseFloat(newIngBatch) || 1;
+                const perPcCost = (parseFloat(newIngAmt) || 0) / batchSize;
                 const cur = getSheet(selectedProductId);
-                const updated = { ...costSheets, [selectedProductId]: { ...cur, ingredients: [...cur.ingredients, { name: newIngName.trim(), amount: parseFloat(newIngAmt) || 0 }] } };
+                const updated = { ...costSheets, [selectedProductId]: { ...cur, ingredients: [...cur.ingredients, { name: newIngName.trim(), amount: parseFloat(perPcCost.toFixed(4)) || 0 }] } };
                 saveCostSheets(updated);
-                setNewIngName(''); setNewIngAmt('');
+                setNewIngName(''); setNewIngAmt(''); setNewIngBatch('');
             };
 
             const removeIngredient = (idx) => {
@@ -881,9 +922,11 @@
                                             </div>
                                             <div className="flex gap-2 mt-2">
                                                 <input value={newIngName} onChange={e=>setNewIngName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addIngredient()} placeholder="Ingredient name" className="flex-1 text-sm px-3 py-2 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#c47c3a]" />
-                                                <input type="number" value={newIngAmt} onChange={e=>setNewIngAmt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addIngredient()} placeholder="Rs/pc" className="w-20 text-sm px-3 py-2 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#c47c3a] text-right" />
+                                                <input type="number" value={newIngAmt} onChange={e=>setNewIngAmt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addIngredient()} placeholder="Cost" className="w-20 text-sm px-3 py-2 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#c47c3a] text-right" />
+                                                <input type="number" value={newIngBatch} onChange={e=>setNewIngBatch(e.target.value)} placeholder="÷pcs" title="Batch size — divide cost across N pieces" className="w-16 text-sm px-2 py-2 rounded-xl border border-stone-200 bg-white outline-none focus:border-[#c47c3a] text-right" />
                                                 <button onClick={addIngredient} className="bg-[#3d1f0f] text-white px-3 py-2 rounded-xl font-bold text-sm hover:bg-[#6b3a22] transition">+</button>
                                             </div>
+                                            <p className="text-[10px] text-stone-400 mt-1 px-1">÷pcs = batch size (e.g. ₹50 for 10 pcs → saves ₹5/pc)</p>
                                             <div className="flex justify-between text-xs font-bold mt-2 px-1">
                                                 <span className="text-stone-400 uppercase tracking-wider">Total Raw Material</span>
                                                 <span className="text-[#3d1f0f]">Rs.{totalIngredientCost.toFixed(2)}</span>
@@ -1024,6 +1067,17 @@
             const [editingProduct, setEditingProduct] = useState(null);
             const [selectedTransaction, setSelectedTransaction] = useState(null);
             const [paymentAmount, setPaymentAmount] = useState('');
+            const [quickAdd, setQuickAdd] = useState('');
+            const [darkMode, setDarkMode] = useState(() => localStorage.getItem('choco_dark') === 'true');
+            const [customerHistoryId, setCustomerHistoryId] = useState(null);
+            const [reportFilter, setReportFilter] = useState('all');
+            const [reportFrom, setReportFrom] = useState('');
+            const [reportTo, setReportTo] = useState('');
+
+            useEffect(() => {
+                document.body.classList.toggle('dark', darkMode);
+                localStorage.setItem('choco_dark', String(darkMode));
+            }, [darkMode]);
 
             useEffect(() => {
                 const loadData = async () => {
@@ -1099,6 +1153,43 @@ const exportAllData = (type) => {
     a.href = url; a.download = filename; a.click();
 };
 
+            };
+
+            const backupData = () => {
+                const data = { version:1, exportedAt:new Date().toISOString(),
+                    customers: JSON.parse(localStorage.getItem('chocolush_customers')||'[]'),
+                    products: JSON.parse(localStorage.getItem('chocolush_products')||'[]'),
+                    transactions: JSON.parse(localStorage.getItem('chocolush_transactions')||'[]'),
+                    expenses: JSON.parse(localStorage.getItem('choco_expenses')||'[]'),
+                    expCats: JSON.parse(localStorage.getItem('choco_exp_cats')||'[]'),
+                    costSheets: JSON.parse(localStorage.getItem('choco_cost_sheets')||'{}'),
+                };
+                const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href=url; a.download=`chocolush-backup-${new Date().toISOString().split('T')[0]}.json`; a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const restoreData = (e) => {
+                const file = e.target.files[0]; if(!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target.result);
+                        if(!data.version){alert('Invalid backup file.');return;}
+                        if(!window.confirm('This will REPLACE all current data. Are you sure?')) return;
+                        if(data.customers){localStorage.setItem('chocolush_customers',JSON.stringify(data.customers));setCustomers(data.customers);}
+                        if(data.products){localStorage.setItem('chocolush_products',JSON.stringify(data.products));setProducts(data.products);}
+                        if(data.transactions){localStorage.setItem('chocolush_transactions',JSON.stringify(data.transactions));setTransactions(data.transactions);}
+                        if(data.expenses) localStorage.setItem('choco_expenses',JSON.stringify(data.expenses));
+                        if(data.expCats) localStorage.setItem('choco_exp_cats',JSON.stringify(data.expCats));
+                        if(data.costSheets) localStorage.setItem('choco_cost_sheets',JSON.stringify(data.costSheets));
+                        alert('Restore successful! The page will reload.');
+                        window.location.reload();
+                    } catch { alert('Could not read backup file.'); }
+                };
+                reader.readAsText(file); e.target.value='';
             };
 
             const saveCustomers = (data) => { setCustomers(data); localStorage.setItem('chocolush_customers', JSON.stringify(data)); };
@@ -1256,6 +1347,10 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
             };
             const shareBill = (t) => { const text = encodeURIComponent(generateBillText(t)); window.open(`https://wa.me/?text=${text}`, '_blank'); };
             const copyBill = (t) => { navigator.clipboard.writeText(generateBillText(t)).then(() => alert('Copied!')); };
+            const sendPaymentReminder = (t) => {
+                const msg = `Hi ${t.customerName}! 👋\n\nGentle reminder from *Chocolush – Premium Kunafa Chocolates*.\n\n📋 Bill No: ${t.billNumber}\n📅 Date: ${new Date(t.date).toLocaleDateString('en-IN')}\n💰 Total: ₹${t.total.toFixed(2)}\n✅ Paid: ₹${t.paidAmount.toFixed(2)}\n⏳ *Balance Due: ₹${t.remainingAmount.toFixed(2)}*\n\nKindly settle at your earliest convenience. Thank you! 🙏`;
+                window.open(`https://wa.me/${t.customerPhone?t.customerPhone.replace(/\D/g,''):''}?text=${encodeURIComponent(msg)}`,'_blank');
+            };
 
             const stats = {
                 totalSales: transactions.reduce((sum, t) => sum + t.total, 0),
@@ -1295,6 +1390,9 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                 </div>
                                 <button onClick={() => setShowAccountsModal(true)} className="btn-ghost text-sm px-4 py-2 flex items-center gap-2" style={{background:'rgba(249,244,236,0.1)',color:'var(--cream)',borderColor:'rgba(249,244,236,0.2)'}}>
                                     <Icon type="building" className="w-4 h-4" /><span className="hidden sm:inline font-medium">Accounts</span>
+                                </button>
+                                <button onClick={() => setDarkMode(d => !d)} className="p-2 rounded-lg" style={{background:'rgba(249,244,236,0.1)',color:'var(--cream)',border:'1px solid rgba(249,244,236,0.2)'}} title="Toggle dark mode">
+                                    <Icon type={darkMode ? 'sun' : 'moon'} className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
@@ -1337,6 +1435,40 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                             <h2 className="serif text-base sm:text-lg font-bold flex items-center gap-2" style={{color:'var(--bark)'}}><Icon type="package" className="w-4 h-4 opacity-50" />Products</h2>
                                             <button onClick={() => { setEditingProduct(null); setShowProductModal(true); }} className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1"><Icon type="plus" className="w-3.5 h-3.5" /> New</button>
                                         </div>
+                                        <div className="mb-3 relative">
+                                            <input
+                                                type="text" value={quickAdd}
+                                                onChange={e => setQuickAdd(e.target.value)}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') {
+                                                        const q = quickAdd.trim().toLowerCase();
+                                                        if (!q) return;
+                                                        const match = products.find(p => p.code.toLowerCase() === q || p.name.toLowerCase().includes(q));
+                                                        if (match) { addToBill(match); setQuickAdd(''); }
+                                                    }
+                                                    if (e.key === 'Escape') setQuickAdd('');
+                                                }}
+                                                placeholder="Type code or name + Enter to add…"
+                                                className="w-full px-3 py-2 text-sm"
+                                            />
+                                            {quickAdd.trim() && (() => {
+                                                const q = quickAdd.trim().toLowerCase();
+                                                const matches = products.filter(p => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
+                                                if (!matches.length) return null;
+                                                return (
+                                                    <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden shadow-xl" style={{background:'var(--cream)',border:'1px solid rgba(196,124,58,0.25)'}}>
+                                                        {matches.map(p => (
+                                                            <button key={p.id} onClick={() => { addToBill(p); setQuickAdd(''); }}
+                                                                className="w-full flex justify-between items-center px-4 py-2.5 text-sm text-left transition"
+                                                                onMouseEnter={e=>e.currentTarget.style.background='rgba(196,124,58,0.08)'} onMouseLeave={e=>e.currentTarget.style.background=''}>
+                                                                <span><span className="mono text-xs font-bold mr-2" style={{color:'var(--caramel)'}}>{p.code}</span><span style={{color:'var(--ink)'}}>{p.name}</span></span>
+                                                                <span className="mono font-bold text-xs" style={{color:'var(--mocha)'}}>{formatCurrency(p.price)}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                             {products.map(product => (
                                                 <button key={product.id} onClick={() => addToBill(product)} className="item-btn p-4 rounded-lg border border-[rgba(196,124,58,0.18)] bg-[rgba(249,244,236,0.5)] hover:border-[rgba(196,124,58,0.4)] text-left">
@@ -1375,7 +1507,14 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                                     <div className="flex items-center gap-2">
                                                         <div className="flex items-center rounded-lg overflow-hidden flex-shrink-0" style={{background:'rgba(249,244,236,0.1)'}}>
                                                             <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="p-1.5 hover:bg-white/10 transition"><Icon type="minus" className="w-3.5 h-3.5" /></button>
-                                                            <span className="w-7 text-center font-bold text-sm mono">{item.quantity}</span>
+                                                            <input
+                                                                type="number" min="1"
+                                                                value={item.quantity}
+                                                                onChange={e => { const v = parseInt(e.target.value); if(!isNaN(v) && v > 0) updateQuantity(item.product.id, v); }}
+                                                                onFocus={e => e.target.select()}
+                                                                className="w-9 text-center font-bold text-sm mono bg-transparent border-none outline-none"
+                                                                style={{color:'var(--cream)',WebkitAppearance:'none',MozAppearance:'textfield'}}
+                                                            />
                                                             <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)} className="p-1.5 hover:bg-white/10 transition"><Icon type="plus" className="w-3.5 h-3.5" /></button>
                                                         </div>
                                                         {/* Offer price per piece */}
@@ -1455,18 +1594,47 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                     </button>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {customers.map(customer => (
-                                        <div key={customer.id} className="item-btn p-4 rounded-xl border border-[rgba(196,124,58,0.18)] bg-[rgba(249,244,236,0.5)] flex justify-between items-start">
-                                            <div>
-                                                <h3 className="font-semibold text-base" style={{color:'var(--ink)'}}>{customer.name}</h3>
-                                                <p className="text-sm mt-0.5" style={{color:'var(--mocha)',opacity:0.6}}>{customer.phone || 'No phone'}</p>
+                                    {customers.map(customer => {
+                                        const custTxns = transactions.filter(t => t.customerId === customer.id || t.customerName === customer.name);
+                                        const totalSales = custTxns.reduce((s,t) => s+t.total, 0);
+                                        const outstanding = custTxns.reduce((s,t) => s+t.remainingAmount, 0);
+                                        return (
+                                        <div key={customer.id} className="item-btn p-4 rounded-xl border border-[rgba(196,124,58,0.18)] bg-[rgba(249,244,236,0.5)]">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="font-semibold text-base truncate" style={{color:'var(--ink)'}}>{customer.name}</h3>
+                                                    <p className="text-sm mt-0.5" style={{color:'var(--mocha)',opacity:0.6}}>{customer.phone || 'No phone'}</p>
+                                                </div>
+                                                <div className="flex gap-1 ml-2 flex-shrink-0">
+                                                    <button onClick={() => { setEditingCustomer(customer); setShowCustomerModal(true); }} className="p-1.5 rounded-lg transition" style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0.5}><Icon type="edit" className="w-4 h-4" /></button>
+                                                    <button onClick={() => deleteCustomer(customer.id)} className="p-1.5 rounded-lg transition" style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>{e.currentTarget.style.color='var(--mocha)';e.currentTarget.style.opacity=0.5}}><Icon type="trash" className="w-4 h-4" /></button>
+                                                </div>
                                             </div>
-                                            <div className="flex gap-1">
-                                                <button onClick={() => { setEditingCustomer(customer); setShowCustomerModal(true); }} className="p-1.5 rounded-lg transition" style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0.5}><Icon type="edit" className="w-4 h-4" /></button>
-                                                <button onClick={() => deleteCustomer(customer.id)} className="p-1.5 rounded-lg transition" style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>{e.currentTarget.style.color='var(--mocha)';e.currentTarget.style.opacity=0.5}}><Icon type="trash" className="w-4 h-4" /></button>
+                                            {custTxns.length > 0 && (
+                                                <div className="flex gap-2 mb-3">
+                                                    <div className="flex-1 rounded-lg px-2 py-1.5 text-center" style={{background:'rgba(122,140,110,0.1)'}}>
+                                                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{color:'var(--sage)'}}>Sales</p>
+                                                        <p className="text-xs font-black mono" style={{color:'var(--bark)'}}>{formatCurrency(totalSales)}</p>
+                                                    </div>
+                                                    <div className="flex-1 rounded-lg px-2 py-1.5 text-center" style={{background:outstanding>0?'rgba(196,124,58,0.1)':'rgba(122,140,110,0.1)'}}>
+                                                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{color:outstanding>0?'var(--caramel)':'var(--sage)'}}>Due</p>
+                                                        <p className="text-xs font-black mono" style={{color:outstanding>0?'var(--caramel)':'var(--sage)'}}>{formatCurrency(outstanding)}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="flex gap-2">
+                                                <button onClick={() => setCustomerHistoryId(customer.id)} className="flex-1 btn-ghost text-xs py-1.5 flex items-center justify-center gap-1">
+                                                    <Icon type="receipt" className="w-3.5 h-3.5" /> History ({custTxns.length})
+                                                </button>
+                                                {outstanding > 0 && customer.phone && (
+                                                    <button onClick={() => { const t = custTxns.find(t=>t.remainingAmount>0); if(t) sendPaymentReminder(t); }} className="btn-accent text-xs px-3 py-1.5 flex items-center gap-1" title="Send reminder">
+                                                        <Icon type="bell" className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -1497,42 +1665,117 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                             </div>
                         )}
 
-                        {tab === 'reports' && (
+                        {tab === 'reports' && (() => {
+                            const now = new Date();
+                            const filteredTxns = transactions.filter(t => {
+                                const d = new Date(t.date);
+                                if (reportFilter === 'week') { const w = new Date(now); w.setDate(now.getDate()-7); return d >= w; }
+                                if (reportFilter === 'month') { return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear(); }
+                                if (reportFilter === 'custom' && reportFrom && reportTo) { return d >= new Date(reportFrom) && d <= new Date(reportTo+'T23:59:59'); }
+                                return true;
+                            });
+                            const fStats = {
+                                total: filteredTxns.reduce((s,t)=>s+t.total,0),
+                                paid: filteredTxns.reduce((s,t)=>s+t.paidAmount,0),
+                                due: filteredTxns.reduce((s,t)=>s+t.remainingAmount,0),
+                                count: filteredTxns.length,
+                            };
+                            const custMap = {};
+                            filteredTxns.forEach(t => {
+                                if (!custMap[t.customerName]) custMap[t.customerName] = {sales:0,due:0,count:0};
+                                custMap[t.customerName].sales += t.total;
+                                custMap[t.customerName].due += t.remainingAmount;
+                                custMap[t.customerName].count++;
+                            });
+                            const topCustomers = Object.entries(custMap).sort((a,b)=>b[1].sales-a[1].sales).slice(0,5);
+                            const prodMap = {};
+                            filteredTxns.forEach(t => { t.items.forEach(item => {
+                                const n = item.product.name;
+                                if (!prodMap[n]) prodMap[n] = {qty:0,revenue:0};
+                                prodMap[n].qty += item.quantity;
+                                prodMap[n].revenue += item.quantity * (item.offerPrice!=null?item.offerPrice:item.product.price);
+                            }); });
+                            const topProducts = Object.entries(prodMap).sort((a,b)=>b[1].revenue-a[1].revenue);
+                            return (
                             <div className="space-y-4 sm:space-y-5 fade-in">
+                                <div className="card p-3 flex flex-wrap gap-2 items-center">
+                                    <Icon type="filter" className="w-4 h-4 flex-shrink-0" style={{color:'var(--caramel)'}} />
+                                    {[['all','All Time'],['week','This Week'],['month','This Month'],['custom','Custom']].map(([v,l])=>(
+                                        <button key={v} onClick={()=>setReportFilter(v)} className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition ${reportFilter===v?'bg-[var(--bark)] text-[var(--cream)]':'btn-ghost'}`}>{l}</button>
+                                    ))}
+                                    {reportFilter==='custom' && <>
+                                        <input type="date" value={reportFrom} onChange={e=>setReportFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg" />
+                                        <span className="text-xs" style={{color:'var(--mocha)'}}>to</span>
+                                        <input type="date" value={reportTo} onChange={e=>setReportTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg" />
+                                    </>}
+                                </div>
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                                    <div className="card stat-card p-4 sm:p-5">
-                                        <div className="flex items-center gap-2 mb-2"><Icon type="trend" className="w-4 h-4" style={{color:'var(--caramel)'}} /><span className="text-xs font-semibold uppercase tracking-widest" style={{color:'var(--mocha)',opacity:0.6}}>Total Sales</span></div>
-                                        <p className="text-2xl sm:text-3xl font-bold mono" style={{color:'var(--bark)'}}>{formatCurrency(stats.totalSales)}</p>
+                                    {[
+                                        {icon:'trend',label:'Total Sales',val:formatCurrency(fStats.total),color:'var(--bark)',ic:'var(--caramel)'},
+                                        {icon:'check',label:'Collected',val:formatCurrency(fStats.paid),color:'var(--sage)',ic:'var(--sage)'},
+                                        {icon:'clock',label:'Outstanding',val:formatCurrency(fStats.due),color:'var(--caramel)',ic:'var(--caramel)'},
+                                        {icon:'receipt',label:'Bills',val:fStats.count,color:'var(--bark)',ic:'var(--bark)'},
+                                    ].map(s=>(
+                                        <div key={s.label} className="card stat-card p-4 sm:p-5">
+                                            <div className="flex items-center gap-2 mb-2"><Icon type={s.icon} className="w-4 h-4" style={{color:s.ic}} /><span className="text-xs font-semibold uppercase tracking-widest" style={{color:'var(--mocha)',opacity:0.6}}>{s.label}</span></div>
+                                            <p className="text-2xl sm:text-3xl font-bold mono" style={{color:s.color}}>{s.val}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div className="card overflow-hidden">
+                                        <div className="p-4 sm:p-5" style={{borderBottom:'1px solid rgba(196,124,58,0.12)'}}><h3 className="serif font-bold text-base" style={{color:'var(--bark)'}}>Top Customers</h3></div>
+                                        {topCustomers.length===0 ? <p className="p-6 text-center text-sm italic" style={{color:'var(--mocha)',opacity:0.4}}>No data</p> : (
+                                            <div className="divide-y" style={{borderColor:'rgba(196,124,58,0.1)'}}>
+                                                {topCustomers.map(([name,d],i)=>(
+                                                    <div key={name} className="flex items-center gap-3 p-3">
+                                                        <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0" style={{background:'rgba(196,124,58,0.12)',color:'var(--caramel)'}}>{i+1}</span>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-semibold text-sm truncate" style={{color:'var(--ink)'}}>{name}</p>
+                                                            <p className="text-xs mono" style={{color:'var(--mocha)',opacity:0.6}}>{d.count} bill{d.count>1?'s':''} · Due: {formatCurrency(d.due)}</p>
+                                                        </div>
+                                                        <span className="font-bold mono text-sm flex-shrink-0" style={{color:'var(--bark)'}}>{formatCurrency(d.sales)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="card stat-card p-4 sm:p-5">
-                                        <div className="flex items-center gap-2 mb-2"><Icon type="check" className="w-4 h-4" style={{color:'var(--sage)'}} /><span className="text-xs font-semibold uppercase tracking-widest" style={{color:'var(--mocha)',opacity:0.6}}>Collected</span></div>
-                                        <p className="text-2xl sm:text-3xl font-bold mono" style={{color:'var(--sage)'}}>{formatCurrency(stats.paidAmount)}</p>
-                                    </div>
-                                    <div className="card stat-card p-4 sm:p-5">
-                                        <div className="flex items-center gap-2 mb-2"><Icon type="clock" className="w-4 h-4" style={{color:'var(--caramel)'}} /><span className="text-xs font-semibold uppercase tracking-widest" style={{color:'var(--mocha)',opacity:0.6}}>Outstanding</span></div>
-                                        <p className="text-2xl sm:text-3xl font-bold mono" style={{color:'var(--caramel)'}}>{formatCurrency(stats.unpaidAmount)}</p>
-                                    </div>
-                                    <div className="card stat-card p-4 sm:p-5">
-                                        <div className="flex items-center gap-2 mb-2"><Icon type="receipt" className="w-4 h-4" style={{color:'var(--bark)'}} /><span className="text-xs font-semibold uppercase tracking-widest" style={{color:'var(--mocha)',opacity:0.6}}>Total Bills</span></div>
-                                        <p className="text-2xl sm:text-3xl font-bold mono" style={{color:'var(--bark)'}}>{stats.transactionCount}</p>
+                                    <div className="card overflow-hidden">
+                                        <div className="p-4 sm:p-5" style={{borderBottom:'1px solid rgba(196,124,58,0.12)'}}><h3 className="serif font-bold text-base" style={{color:'var(--bark)'}}>Product Sales</h3></div>
+                                        {topProducts.length===0 ? <p className="p-6 text-center text-sm italic" style={{color:'var(--mocha)',opacity:0.4}}>No data</p> : (
+                                            <div className="divide-y" style={{borderColor:'rgba(196,124,58,0.1)'}}>
+                                                {topProducts.map(([name,d])=>{
+                                                    const maxR = topProducts[0][1].revenue;
+                                                    return (
+                                                    <div key={name} className="p-3">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <p className="font-semibold text-sm" style={{color:'var(--ink)'}}>{name}</p>
+                                                            <span className="font-bold mono text-sm" style={{color:'var(--bark)'}}>{formatCurrency(d.revenue)}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex-1 h-1.5 rounded-full" style={{background:'rgba(196,124,58,0.12)'}}>
+                                                                <div className="h-full rounded-full" style={{width:`${(d.revenue/maxR)*100}%`,background:'var(--caramel)'}}></div>
+                                                            </div>
+                                                            <span className="text-xs mono" style={{color:'var(--mocha)',opacity:0.6}}>{d.qty} pcs</span>
+                                                        </div>
+                                                    </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="card overflow-hidden">
                                     <div className="p-4 sm:p-5 flex flex-wrap justify-between items-center gap-2" style={{borderBottom:'1px solid rgba(196,124,58,0.12)'}}>
-                                        <h3 className="serif font-bold text-lg" style={{color:'var(--bark)'}}>Recent Transactions</h3>
+                                        <h3 className="serif font-bold text-lg" style={{color:'var(--bark)'}}>Transactions <span className="text-sm font-normal opacity-50">({fStats.count})</span></h3>
                                         <div className="flex gap-2">
-                                            <button onClick={() => exportAllData('monthly')} className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1">
-                                                <Icon type="calendar" className="w-3.5 h-3.5" /> Monthly
-                                            </button>
-                                            <button onClick={() => exportAllData('transactions')} className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1">
-                                                <Icon type="download" className="w-3.5 h-3.5" /> Export
-                                            </button>
+                                            <button onClick={() => exportAllData('monthly')} className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1"><Icon type="calendar" className="w-3.5 h-3.5" /> Monthly</button>
+                                            <button onClick={() => exportAllData('transactions')} className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1"><Icon type="download" className="w-3.5 h-3.5" /> Export</button>
                                         </div>
                                     </div>
-
                                     <div className="divide-y" style={{borderColor:'rgba(196,124,58,0.1)'}}>
-                                        {transactions.slice().reverse().map(t => (
-                                            <div key={t.id} className="p-4 transition" style={{}} onMouseEnter={e=>e.currentTarget.style.background='rgba(196,124,58,0.04)'} onMouseLeave={e=>e.currentTarget.style.background=''}>
+                                        {filteredTxns.slice().reverse().map(t => (
+                                            <div key={t.id} className="p-4 transition" onMouseEnter={e=>e.currentTarget.style.background='rgba(196,124,58,0.04)'} onMouseLeave={e=>e.currentTarget.style.background=''}>
                                                 <div className="flex justify-between items-start gap-2 mb-2">
                                                     <div className="flex-1 min-w-0">
                                                         <p className="font-semibold truncate" style={{color:'var(--ink)'}}>{t.customerName}</p>
@@ -1544,12 +1787,11 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                                     </div>
                                                 </div>
                                                 <div className="flex justify-between items-center">
-                                                    <button onClick={() => togglePaymentStatus(t.id)} className={t.isPaid ? 'badge-paid' : 'badge-due'}>
-                                                        {t.isPaid ? '✓ Paid' : '⏳ Pending'}
-                                                    </button>
+                                                    <button onClick={() => togglePaymentStatus(t.id)} className={t.isPaid ? 'badge-paid' : 'badge-due'}>{t.isPaid ? '✓ Paid' : '⏳ Pending'}</button>
                                                     <div className="flex gap-1">
                                                         <button onClick={() => { setSelectedTransaction(t); setShowDetailsModal(true); }} className="p-1.5 rounded-lg transition" style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0.5}><Icon type="eye" className="w-4 h-4" /></button>
                                                         <button onClick={() => shareBill(t)} className="p-1.5 rounded-lg transition" style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0.5}><Icon type="share" className="w-4 h-4" /></button>
+                                                        {t.remainingAmount > 0 && <button onClick={() => sendPaymentReminder(t)} className="p-1.5 rounded-lg transition" title="Send reminder" style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0.5}><Icon type="bell" className="w-4 h-4" /></button>}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1557,12 +1799,60 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                     </div>
                                 </div>
                             </div>
-                        )}
+                            );
+                        })()}
 
                         {tab === 'profits' && <ProfitsTab products={products} transactions={transactions} />}
                     </div>
 
-                    {/* CUSTOMER MODAL */}
+                    {/* CUSTOMER HISTORY MODAL */}
+                    {customerHistoryId && (() => {
+                        const cust = customers.find(c => c.id === customerHistoryId);
+                        const custTxns = transactions.filter(t => t.customerId === customerHistoryId || t.customerName === cust?.name).slice().reverse();
+                        const totalSales = custTxns.reduce((s,t)=>s+t.total,0);
+                        const totalDue = custTxns.reduce((s,t)=>s+t.remainingAmount,0);
+                        return (
+                        <div className={modalCls} onClick={e=>{ if(e.target===e.currentTarget) setCustomerHistoryId(null); }}>
+                            <div className="modal-box w-full sm:max-w-lg p-0 overflow-hidden" style={{maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
+                                <div className="p-5 sm:p-6 flex justify-between items-start" style={{borderBottom:'1px solid rgba(196,124,58,0.15)'}}>
+                                    <div>
+                                        <h2 className="serif text-xl font-bold" style={{color:'var(--bark)'}}>{cust?.name}</h2>
+                                        <p className="text-xs mt-0.5" style={{color:'var(--mocha)',opacity:0.6}}>{cust?.phone || 'No phone'}</p>
+                                    </div>
+                                    <button onClick={()=>setCustomerHistoryId(null)} style={{color:'var(--mocha)',opacity:0.5}}><Icon type="x" /></button>
+                                </div>
+                                <div className="flex gap-3 px-5 py-3" style={{borderBottom:'1px solid rgba(196,124,58,0.1)'}}>
+                                    {[['Total Sales',formatCurrency(totalSales),'var(--bark)','rgba(196,124,58,0.07)'],['Outstanding',formatCurrency(totalDue),totalDue>0?'var(--caramel)':'var(--sage)',totalDue>0?'rgba(196,124,58,0.12)':'rgba(122,140,110,0.1)'],['Bills',custTxns.length,'var(--bark)','rgba(196,124,58,0.07)']].map(([label,val,color,bg])=>(
+                                        <div key={label} className="flex-1 rounded-xl p-3 text-center" style={{background:bg}}>
+                                            <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{color,opacity:0.7}}>{label}</p>
+                                            <p className="font-black mono text-base" style={{color}}>{val}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div style={{overflowY:'auto',flex:1}}>
+                                    {custTxns.length===0 ? <p className="p-10 text-center text-sm italic" style={{color:'var(--mocha)',opacity:0.4}}>No transactions yet</p> :
+                                    custTxns.map(t=>(
+                                        <div key={t.id} className="p-4 flex justify-between items-start gap-3" style={{borderBottom:'1px solid rgba(196,124,58,0.08)'}}>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-semibold text-sm" style={{color:'var(--ink)'}}>{t.billNumber}</p>
+                                                <p className="text-xs mono mt-0.5" style={{color:'var(--mocha)',opacity:0.55}}>{new Date(t.date).toLocaleDateString('en-IN')} · {t.items.map(i=>`${i.product.name}×${i.quantity}`).join(', ')}</p>
+                                                {t.remainingAmount>0 && <p className="text-xs font-semibold mt-0.5" style={{color:'var(--caramel)'}}>Due: {formatCurrency(t.remainingAmount)}</p>}
+                                            </div>
+                                            <div className="text-right flex-shrink-0">
+                                                <p className="font-bold mono" style={{color:'var(--bark)'}}>{formatCurrency(t.total)}</p>
+                                                <span className={t.isPaid?'badge-paid':'badge-due'} style={{fontSize:'9px'}}>{t.isPaid?'✓ Paid':'⏳ Due'}</span>
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <button onClick={()=>{ setSelectedTransaction(t); setCustomerHistoryId(null); setShowDetailsModal(true); }} style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0.5}><Icon type="eye" className="w-4 h-4" /></button>
+                                                <button onClick={()=>shareBill(t)} style={{color:'var(--mocha)',opacity:0.5}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0.5}><Icon type="share" className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        );
+                    })()}
                     {showCustomerModal && (
                         <div className={modalCls}>
                             <div className={modalBox}>
@@ -1647,6 +1937,7 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                                     </div>
                                     <div className="grid grid-cols-2 gap-3 pt-4">
                                         {selectedTransaction.remainingAmount > 0 && <button onClick={() => { setShowDetailsModal(false); setShowPaymentModal(true); }} className="bg-[#4b2c20] text-white py-4 rounded-xl font-bold shadow-lg">Add Payment</button>}
+                                        {selectedTransaction.remainingAmount > 0 && selectedTransaction.customerPhone && <button onClick={() => sendPaymentReminder(selectedTransaction)} className="bg-[#25D366] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2"><Icon type="bell" className="w-4 h-4" /> Remind</button>}
                                         <button onClick={() => deleteTransaction(selectedTransaction.id)} className="bg-red-50 text-red-500 py-4 rounded-xl font-bold flex items-center justify-center gap-2"><Icon type="trash" /> Delete</button>
                                     </div>
                                 </div>
@@ -1684,7 +1975,16 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                             <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative">
                                 <div className="p-5 sm:p-8 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
                                     <div><h2 className="text-2xl sm:text-3xl font-black text-stone-800">Business Accounts</h2><p className="text-stone-400 text-sm">Track all receivables and income</p></div>
-                                    <button onClick={() => setShowAccountsModal(false)} className="text-stone-400 hover:text-stone-600 p-2"><Icon type="x" className="w-6 h-6 sm:w-8 sm:h-8" /></button>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={backupData} className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition" style={{background:'rgba(196,124,58,0.1)',color:'var(--mocha)',border:'1px solid rgba(196,124,58,0.2)'}} title="Download backup">
+                                            <Icon type="download" className="w-3.5 h-3.5" /><span className="hidden sm:inline">Backup</span>
+                                        </button>
+                                        <label className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer" style={{background:'rgba(196,124,58,0.1)',color:'var(--mocha)',border:'1px solid rgba(196,124,58,0.2)'}} title="Restore from backup">
+                                            <Icon type="upload" className="w-3.5 h-3.5" /><span className="hidden sm:inline">Restore</span>
+                                            <input type="file" accept=".json" onChange={restoreData} className="hidden" />
+                                        </label>
+                                        <button onClick={() => setShowAccountsModal(false)} className="text-stone-400 hover:text-stone-600 p-2"><Icon type="x" className="w-6 h-6 sm:w-8 sm:h-8" /></button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-[#fdfcfb]">
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
