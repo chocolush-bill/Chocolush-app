@@ -9,6 +9,33 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA4mrgOmCfJtYnn1ZOR5bgySDfHbu4pNXw",
+            authDomain: "chocolush-3e05c.firebaseapp.com",
+            projectId: "chocolush-3e05c",
+            storageBucket: "chocolush-3e05c.firebasestorage.app",
+            messagingSenderId: "229853233954",
+            appId: "1:229853233954:web:e7081ef336443e3a8cdb7b"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Expose db and helpers to global scope for React
+        window.__firebaseDB = db;
+        window.__fbCollection = collection;
+        window.__fbOnSnapshot = onSnapshot;
+        window.__fbDoc = doc;
+        window.__fbUpdateDoc = updateDoc;
+        window.__fbDeleteDoc = deleteDoc;
+        window.__firebaseReady = true;
+        window.dispatchEvent(new Event('firebaseReady'));
+    </script>
     <style>
         :root {
             --ink: #1c1410;
@@ -1049,6 +1076,216 @@
         // ══════════════════════════════════════════════════
 
 
+        // ══════════════════════════════════════════════════
+        // ORDERS TAB — reads from Firebase
+        // ══════════════════════════════════════════════════
+        const OrdersTab = ({ products, customers, onConvertToBill }) => {
+            const [orders, setOrders] = React.useState([]);
+            const [fbReady, setFbReady] = React.useState(!!window.__firebaseReady);
+            const [selectedOrder, setSelectedOrder] = React.useState(null);
+            const [filter, setFilter] = React.useState('new');
+            const [toast, setToast] = React.useState(null);
+
+            const showToast = (msg, type='success') => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
+
+            React.useEffect(() => {
+                if (!fbReady) {
+                    const handler = () => setFbReady(true);
+                    window.addEventListener('firebaseReady', handler);
+                    return () => window.removeEventListener('firebaseReady', handler);
+                }
+            }, [fbReady]);
+
+            React.useEffect(() => {
+                if (!fbReady || !window.__firebaseDB) return;
+                const db = window.__firebaseDB;
+                const col = window.__fbCollection(db, 'orders');
+                const unsub = window.__fbOnSnapshot(col, snap => {
+                    const data = snap.docs.map(d => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate?.() || new Date() }));
+                    data.sort((a,b) => b.createdAt - a.createdAt);
+                    setOrders(data);
+                });
+                return () => unsub();
+            }, [fbReady]);
+
+            const updateStatus = async (orderId, status) => {
+                if (!window.__firebaseDB) return;
+                const db = window.__firebaseDB;
+                await window.__fbUpdateDoc(window.__fbDoc(db, 'orders', orderId), { status });
+                showToast(`Marked as ${status}`);
+                setSelectedOrder(null);
+            };
+
+            const deleteOrder = async (orderId) => {
+                if (!window.confirm('Delete this order?')) return;
+                if (!window.__firebaseDB) return;
+                await window.__fbDeleteDoc(window.__fbDoc(window.__firebaseDB, 'orders', orderId));
+                showToast('Order deleted', 'error');
+                setSelectedOrder(null);
+            };
+
+            const convertToBill = (order) => {
+                onConvertToBill(order);
+                updateStatus(order.id, 'converted');
+                setSelectedOrder(null);
+                showToast('Order loaded into billing!');
+            };
+
+            const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter);
+            const counts = { new: orders.filter(o=>o.status==='new').length, confirmed: orders.filter(o=>o.status==='confirmed').length, converted: orders.filter(o=>o.status==='converted').length };
+
+            const statusColor = (s) => ({
+                new: 'bg-amber-100 text-amber-700',
+                confirmed: 'bg-blue-100 text-blue-700',
+                converted: 'bg-green-100 text-green-700',
+                cancelled: 'bg-red-100 text-red-600',
+            }[s] || 'bg-stone-100 text-stone-500');
+
+            if (!fbReady) return (
+                <div className="flex flex-col items-center justify-center py-20 text-stone-400">
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#c47c3a] border-t-transparent mb-4"></div>
+                    <p className="text-sm">Connecting to Firebase…</p>
+                </div>
+            );
+
+            return (
+                <div className="fade-in">
+                    {toast && (
+                        <div className={`fixed bottom-6 inset-x-4 sm:left-auto sm:right-6 sm:w-72 z-50 px-5 py-3 rounded-2xl text-white font-semibold text-sm shadow-2xl fade-in ${toast.type==='error'?'bg-red-500':'bg-[#4b2c20]'}`}>{toast.msg}</div>
+                    )}
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                        {[
+                            {label:'New', val: counts.new, color:'text-amber-600'},
+                            {label:'Confirmed', val: counts.confirmed, color:'text-blue-600'},
+                            {label:'Converted', val: counts.converted, color:'text-green-600'},
+                        ].map(s => (
+                            <div key={s.label} className="bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow border border-white/50 text-center">
+                                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">{s.label}</p>
+                                <p className={`text-2xl font-black ${s.color}`}>{s.val}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Filter tabs */}
+                    <div className="flex bg-white/50 backdrop-blur-md rounded-2xl p-1.5 gap-1 shadow-lg border border-white/50 mb-4">
+                        {['all','new','confirmed','converted','cancelled'].map(f => (
+                            <button key={f} onClick={() => setFilter(f)}
+                                className={`flex-1 py-2 rounded-xl font-bold text-[11px] capitalize transition-all ${filter===f ? 'bg-[#4b2c20] text-white shadow' : 'text-stone-500 hover:bg-white/50'}`}>
+                                {f}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Orders list */}
+                    {filtered.length === 0 ? (
+                        <div className="bg-white/80 rounded-2xl p-12 text-center text-stone-300 italic text-sm shadow">
+                            {filter === 'new' ? '🎉 No new orders yet. Share your store link!' : `No ${filter} orders`}
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {filtered.map(order => (
+                                <div key={order.id} className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-white/50 p-4 cursor-pointer hover:shadow-xl transition-all"
+                                    onClick={() => setSelectedOrder(order)}>
+                                    <div className="flex justify-between items-start gap-3 mb-2">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                <p className="font-black text-stone-800">{order.customerName}</p>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${statusColor(order.status)}`}>{order.status}</span>
+                                            </div>
+                                            <p className="text-xs text-stone-400">{order.phone} · {order.createdAt.toLocaleDateString('en-IN', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</p>
+                                        </div>
+                                        <p className="font-black text-[#4b2c20] text-lg flex-shrink-0">₹{order.total}</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {(order.items||[]).map((item,i) => (
+                                            <span key={i} className="text-[11px] bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full font-medium">
+                                                {item.name} ×{item.qty}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Order Detail Modal */}
+                    {selectedOrder && (
+                        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 fade-in p-0 sm:p-4"
+                            onClick={e => e.target===e.currentTarget && setSelectedOrder(null)}>
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md overflow-hidden">
+                                <div className="p-5 border-b border-stone-100 flex justify-between items-start">
+                                    <div>
+                                        <h2 className="text-xl font-black text-stone-800">{selectedOrder.customerName}</h2>
+                                        <p className="text-xs text-stone-400 mt-0.5">{selectedOrder.phone}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] font-bold px-3 py-1 rounded-full capitalize ${statusColor(selectedOrder.status)}`}>{selectedOrder.status}</span>
+                                        <button onClick={() => setSelectedOrder(null)} className="text-stone-400 hover:text-stone-600 p-1"><Icon type="x" /></button>
+                                    </div>
+                                </div>
+                                <div className="p-5 max-h-[60vh] overflow-y-auto">
+                                    {/* Address */}
+                                    <div className="bg-stone-50 rounded-2xl p-3 mb-4">
+                                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Delivery Address</p>
+                                        <p className="text-sm text-stone-700">{selectedOrder.address}</p>
+                                        {selectedOrder.note && <p className="text-xs text-stone-500 mt-1 italic">"{selectedOrder.note}"</p>}
+                                    </div>
+
+                                    {/* Items */}
+                                    <div className="mb-4">
+                                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-2">Items Ordered</p>
+                                        <div className="space-y-1.5">
+                                            {(selectedOrder.items||[]).map((item,i) => (
+                                                <div key={i} className="flex justify-between items-center bg-stone-50 rounded-xl px-3 py-2">
+                                                    <span className="text-sm font-semibold text-stone-700">{item.name} <span className="text-stone-400">×{item.qty}</span></span>
+                                                    <span className="font-black text-[#4b2c20] text-sm">₹{item.subtotal}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="flex justify-between items-center mt-3 px-1">
+                                            <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">Total</span>
+                                            <span className="font-black text-[#4b2c20] text-xl">₹{selectedOrder.total}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="space-y-2">
+                                        {selectedOrder.status === 'new' && (
+                                            <button onClick={() => updateStatus(selectedOrder.id, 'confirmed')}
+                                                className="w-full bg-blue-500 text-white py-3 rounded-2xl font-bold text-sm hover:bg-blue-600 transition">
+                                                ✓ Confirm Order
+                                            </button>
+                                        )}
+                                        {['new','confirmed'].includes(selectedOrder.status) && (
+                                            <button onClick={() => convertToBill(selectedOrder)}
+                                                className="w-full bg-[#4b2c20] text-white py-3 rounded-2xl font-bold text-sm hover:bg-[#6b3a22] transition">
+                                                🧾 Convert to Bill
+                                            </button>
+                                        )}
+                                        {selectedOrder.status !== 'cancelled' && (
+                                            <button onClick={() => updateStatus(selectedOrder.id, 'cancelled')}
+                                                className="w-full bg-red-50 text-red-500 py-3 rounded-2xl font-bold text-sm hover:bg-red-100 transition">
+                                                ✕ Cancel Order
+                                            </button>
+                                        )}
+                                        <button onClick={() => deleteOrder(selectedOrder.id)}
+                                            className="w-full bg-stone-100 text-stone-500 py-3 rounded-2xl font-bold text-sm hover:bg-stone-200 transition">
+                                            🗑 Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        // ══════════════════════════════════════════════════
+        // END ORDERS TAB
+        // ══════════════════════════════════════════════════
+
         const App = () => {
             const [tab, setTab] = useState('billing');
             const [customers, setCustomers] = useState([]);
@@ -1073,6 +1310,25 @@
             const [reportFilter, setReportFilter] = useState('all');
             const [reportFrom, setReportFrom] = useState('');
             const [reportTo, setReportTo] = useState('');
+
+            // Convert online order → pre-fill billing tab
+            const convertFromOrder = (order) => {
+                // Try to match existing customer by phone, else use name
+                const matched = customers.find(c => c.phone && order.phone && c.phone.replace(/\D/g,'') === order.phone.replace(/\D/g,''));
+                if (matched) setSelectedCustomer(matched);
+
+                // Build bill items from order items, matched against products
+                const newItems = (order.items || []).map(oi => {
+                    const prod = products.find(p => p.code === oi.id || p.name === oi.name);
+                    if (!prod) return null;
+                    return { product: prod, quantity: oi.qty, offerPrice: null, itemDiscount: 0, itemDiscountType: 'percent' };
+                }).filter(Boolean);
+
+                if (newItems.length > 0) {
+                    setBill({ items: newItems, discount: 0, discountType: 'percentage' });
+                }
+                setTab('billing');
+            };
 
             useEffect(() => {
                 document.body.classList.toggle('dark', darkMode);
@@ -1400,10 +1656,10 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
 
                     {/* Tabs */}
                     <div className="max-w-7xl mx-auto mb-4 flex tab-bar gap-1 overflow-x-auto">
-                        {['billing', 'customers', 'products', 'reports', 'profits'].map((t) => (
+                        {['billing', 'customers', 'products', 'reports', 'profits', 'orders'].map((t) => (
                             <button key={t} onClick={() => setTab(t)}
                                 className={`tab-item flex-1 whitespace-nowrap py-2.5 px-3 capitalize ${tab === t ? 'active' : ''}`}>
-                                {t === 'profits' ? 'Profits' : t}
+                                {t === 'profits' ? 'Profits' : t === 'orders' ? '🛍 Orders' : t}
                             </button>
                         ))}
                     </div>
@@ -1803,6 +2059,7 @@ setSelectedTransaction(transaction); // Loads the data into the preview window
                         })()}
 
                         {tab === 'profits' && <ProfitsTab products={products} transactions={transactions} />}
+                        {tab === 'orders' && <OrdersTab products={products} customers={customers} onConvertToBill={convertFromOrder} />}
                     </div>
 
                     {/* CUSTOMER HISTORY MODAL */}
