@@ -750,9 +750,25 @@ const AdminApp=({onLogout})=>{
   const addCustomer=c=>{saveCustomers([...customers,{...c,id:genId()}]);setShowCustomerModal(false);setEditingCustomer(null);};
   const updateCustomer=c=>{saveCustomers(customers.map(x=>x.id===c.id?c:x));setShowCustomerModal(false);setEditingCustomer(null);};
   const deleteCustomer=id=>{if(!window.confirm('Delete?'))return;saveCustomers(customers.filter(c=>c.id!==id));};
-  const addProduct=p=>{const np={...p,id:genId()};saveProducts([...products,np]);setShowProductModal(false);setEditingProduct(null);};
-  const updateProduct=p=>{saveProducts(products.map(x=>x.id===p.id?p:x));setShowProductModal(false);setEditingProduct(null);};
-  const deleteProduct=id=>{if(!window.confirm('Delete?'))return;saveProducts(products.filter(p=>p.id!==id));window.__sb.from('products').delete().eq('id',id);};
+  const addProduct=async p=>{
+    const np={...p,id:genId()};
+    saveProducts([...products,np]);
+    await window.__sb.from('products').upsert({id:np.id,code:np.code,name:np.name,price:np.price,description:np.description||'',image_url:np.image_url||''});
+    setShowProductModal(false);setEditingProduct(null);
+    showToast('Product added to store!');
+  };
+  const updateProduct=async p=>{
+    saveProducts(products.map(x=>x.id===p.id?p:x));
+    await window.__sb.from('products').upsert({id:p.id,code:p.code,name:p.name,price:p.price,description:p.description||'',image_url:p.image_url||''});
+    setShowProductModal(false);setEditingProduct(null);
+    showToast('Product updated!');
+  };
+  const deleteProduct=async id=>{
+    if(!window.confirm('Delete this product from billing AND store?'))return;
+    saveProducts(products.filter(p=>p.id!==id));
+    await window.__sb.from('products').delete().eq('id',id);
+    showToast('Product deleted.','info');
+  };
 
   const addToBill=product=>{
     const ex=bill.items.find(i=>i.product.id===product.id);
