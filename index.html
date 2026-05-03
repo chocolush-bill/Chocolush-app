@@ -103,7 +103,7 @@ body.dark .product-card{background:rgba(26,15,6,.9);}
 const {useState,useEffect,useRef,useCallback} = React;
 
 // ─── CONFIG ───────────────────────────────────────────────
-const ADMIN_PASSWORD = "Admin2026"; // ← change this
+const ADMIN_PASSWORD = "Admin@2026"; // ← change this
 const WA_NUMBER = "919400667313";       // ← your WhatsApp number
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyqafYeFD5Egz0E1MZE9X63mZvuISSH29XPujFsHHrh0rW0CJvmvdpL3cfnq9iP6OlU3Q/exec";
 
@@ -520,15 +520,29 @@ const StoreApp=({onAdminLogin})=>{
     try{
       const{data,error}=await window.__sb.from('products').select('*');
       if(!error&&data&&data.length>0){
-        setProducts(data);
+        // Merge: Supabase data + localStorage images (base64 stored locally)
+        const localRaw=localStorage.getItem('chocolush_products');
+        const localProds=localRaw?JSON.parse(localRaw):[];
+        const merged=data.map(sp=>{
+          const local=localProds.find(l=>l.id===sp.id);
+          const img=(sp.image_url&&sp.image_url!=='')?sp.image_url:(local?.image_url||'');
+          return{...sp,price:parseFloat(sp.price)||0,image_url:img};
+        });
+        setProducts(merged);
       } else {
         // Fallback: use admin's localStorage products
         const sp=localStorage.getItem('chocolush_products');
-        if(sp){const p=JSON.parse(sp);if(p.length>0)setProducts(p);}
+        if(sp){
+          const p=JSON.parse(sp).map(x=>({...x,price:parseFloat(x.price)||0}));
+          if(p.length>0)setProducts(p);
+        }
       }
     }catch(e){
       const sp=localStorage.getItem('chocolush_products');
-      if(sp){const p=JSON.parse(sp);if(p.length>0)setProducts(p);}
+      if(sp){
+        const p=JSON.parse(sp).map(x=>({...x,price:parseFloat(x.price)||0}));
+        if(p.length>0)setProducts(p);
+      }
     }
   },[]);
 
@@ -718,6 +732,7 @@ const AdminApp=({onLogout})=>{
   const [loading,setLoading]=useState(true);
   const [showCustomerModal,setShowCustomerModal]=useState(false);
   const [showProductModal,setShowProductModal]=useState(false);
+  const [showBulkModal,setShowBulkModal]=useState(false);
   const [showBillPreview,setShowBillPreview]=useState(false);
   const [showPaymentModal,setShowPaymentModal]=useState(false);
   const [showDetailsModal,setShowDetailsModal]=useState(false);
@@ -774,10 +789,20 @@ const AdminApp=({onLogout})=>{
   const deleteCustomer=id=>{if(!window.confirm('Delete?'))return;saveCustomers(customers.filter(c=>c.id!==id));};
   const syncProductToSupabase=async(p)=>{
     try{
-      const row={id:String(p.id),code:p.code||'',name:p.name,price:parseFloat(p.price)||0,description:p.description||'',image_url:p.image_url||''};
+      // Don't store base64 images in Supabase (too large) — store empty string instead
+      const imgUrl=(p.image_url&&!p.image_url.startsWith('data:'))?p.image_url:'';
+      const row={
+        id:String(p.id),
+        code:p.code||'',
+        name:p.name,
+        price:parseFloat(p.price)||0,
+        description:p.description||'',
+        image_url:imgUrl
+      };
       const{error}=await window.__sb.from('products').upsert(row,{onConflict:'id'});
-      if(error){console.error('Supabase sync error:',error);showToast('Saved locally. Sync error: '+error.message,'error');}
-    }catch(e){console.error('Sync failed:',e);showToast('Saved locally. Store sync failed.','error');}
+      if(error){console.error('Supabase sync error:',error);showToast('Sync error: '+error.message,'error');}
+      else{showToast('Product synced to store ✓');}
+    }catch(e){console.error('Sync failed:',e);}
   };
   const addProduct=async p=>{
     const np={...p,id:genId()};
@@ -1083,7 +1108,13 @@ const AdminApp=({onLogout})=>{
         {/* ── PRODUCTS TAB ── */}
         {tab==='products'&&(
           <div className="card p-4 sm:p-6 fade-in">
-            <div className="flex justify-between items-center mb-6"><h2 className="serif text-xl font-bold text-[#3d1f0f]">Products</h2><button onClick={()=>{setEditingProduct(null);setShowProductModal(true);}} className="btn-primary px-4 py-2 text-sm flex items-center gap-2"><Icon type="plus" className="w-4 h-4"/>Add Product</button></div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="serif text-xl font-bold text-[#3d1f0f]">Products</h2>
+              <div className="flex gap-2">
+                <button onClick={()=>setShowBulkModal(true)} className="btn-ghost px-3 py-2 text-sm flex items-center gap-2"><Icon type="download" className="w-4 h-4"/>Bulk</button>
+                <button onClick={()=>{setEditingProduct(null);setShowProductModal(true);}} className="btn-primary px-3 py-2 text-sm flex items-center gap-2"><Icon type="plus" className="w-4 h-4"/>Add</button>
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {products.map(p=>(
                 <div key={p.id} className="item-btn rounded-xl border border-[rgba(196,124,58,.18)] bg-[rgba(249,244,236,.5)] overflow-hidden">
@@ -1245,6 +1276,25 @@ const AdminApp=({onLogout})=>{
       )}
 
       {/* ── PRODUCT MODAL ── */}
+      {showBulkModal&&(
+        <BulkProductModal
+          onClose={()=>setShowBulkModal(false)}
+          onImport={async(newProducts)=>{
+            const merged=[...products];
+            for(const p of newProducts){
+              const exists=merged.find(x=>x.code&&x.code.toLowerCase()===p.code.toLowerCase());
+              if(!exists){
+                const np={...p,id:genId()};
+                merged.push(np);
+                await syncProductToSupabase(np);
+              }
+            }
+            saveProducts(merged);
+            setShowBulkModal(false);
+            showToast(`${newProducts.length} products imported!`);
+          }}
+        />
+      )}
       {showProductModal&&(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&(setShowProductModal(false),setEditingProduct(null))}>
           <div className="modal-box p-6 relative">
@@ -1275,6 +1325,124 @@ const CustomerForm=({initial,onSave})=>{
 // ══════════════════════════════════════════════════════════
 // PRODUCT FORM (with image upload to Supabase Storage)
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// BULK PRODUCT MODAL
+// ══════════════════════════════════════════════════════════
+const BulkProductModal=({onClose,onImport})=>{
+  const [mode,setMode]=useState('paste'); // paste | csv
+  const [text,setText]=useState('');
+  const [parsed,setParsed]=useState([]);
+  const [error,setError]=useState('');
+
+  const parseText=()=>{
+    setError('');
+    const lines=text.trim().split('\n').filter(l=>l.trim());
+    const results=[];
+    for(const line of lines){
+      // Support: tab, comma, pipe separated
+      const parts=line.split(/[\t,|]/).map(s=>s.trim().replace(/^"|"$/g,''));
+      if(parts.length<2){setError(`Can't parse line: "${line}" — need at least Name and Price`);return;}
+      let code='',name='',price=0,description='';
+      if(parts.length>=3 && isNaN(parseFloat(parts[0])) && !isNaN(parseFloat(parts[2]))){
+        // Format: Code, Name, Price, Description
+        [code,name]=parts;price=parseFloat(parts[2])||0;description=parts[3]||'';
+      } else if(!isNaN(parseFloat(parts[1]))){
+        // Format: Name, Price, Description
+        name=parts[0];price=parseFloat(parts[1])||0;description=parts[2]||'';
+        code=name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,4);
+      } else {
+        setError(`Can't parse price in: "${line}"`);return;
+      }
+      if(!name){setError('Empty name found');return;}
+      results.push({code,name,price,description,image_url:''});
+    }
+    setParsed(results);
+  };
+
+  const handleCSV=e=>{
+    const file=e.target.files[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      setText(ev.target.result);
+      setMode('paste');
+    };
+    reader.readAsText(file);
+  };
+
+  return(
+    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-box">
+        <div className="sticky top-0 bg-[#f9f4ec] px-5 pt-5 pb-4 border-b border-[rgba(196,124,58,.12)] flex justify-between items-center">
+          <div>
+            <h2 className="serif text-xl font-bold text-[#3d1f0f]">Bulk Import Products</h2>
+            <p className="text-xs text-[#6b3a22]/50 mt-0.5">Add many products at once</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-[rgba(196,124,58,.1)] flex items-center justify-center text-[#6b3a22]"><Icon type="x" className="w-4 h-4"/></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {/* Format guide */}
+          <div className="bg-[rgba(196,124,58,.06)] rounded-xl p-4 border border-[rgba(196,124,58,.12)]">
+            <p className="text-xs font-bold text-[#3d1f0f] mb-2">📋 Accepted Formats (one product per line):</p>
+            <div className="space-y-1 font-mono text-xs text-[#6b3a22]">
+              <p className="bg-white/60 px-2 py-1 rounded">Name, Price</p>
+              <p className="bg-white/60 px-2 py-1 rounded">Name, Price, Description</p>
+              <p className="bg-white/60 px-2 py-1 rounded">Code, Name, Price</p>
+              <p className="bg-white/60 px-2 py-1 rounded">Code, Name, Price, Description</p>
+            </div>
+            <p className="text-[10px] text-[#6b3a22]/40 mt-2">Separator can be comma, tab, or pipe (|). CSV files also accepted.</p>
+          </div>
+
+          {/* Example */}
+          <div>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className={labelCls}>Paste Products</label>
+              <label className="text-xs text-[#c47c3a] font-semibold cursor-pointer hover:underline">
+                📁 Upload CSV
+                <input type="file" accept=".csv,.txt" onChange={handleCSV} className="hidden"/>
+              </label>
+            </div>
+            <textarea
+              value={text}
+              onChange={e=>{setText(e.target.value);setParsed([]);setError('');}}
+              placeholder={"KC01, Big Kunafa Chocolate, 250, Crispy kunafa with chocolate\nKC02, Med. Kunafa Chocolate, 125\nKC03, Mini Kunafa Bites, 40"}
+              rows="6"
+              className="w-full px-3 py-2.5 text-sm font-mono resize-none"
+            />
+          </div>
+
+          {error&&<p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-xl">⚠ {error}</p>}
+
+          <button onClick={parseText} className="btn-ghost w-full py-3 text-sm font-semibold">
+            Preview →
+          </button>
+
+          {/* Preview table */}
+          {parsed.length>0&&(
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-[#3d1f0f] uppercase tracking-widest">{parsed.length} Products Ready</p>
+              <div className="card overflow-hidden divide-y divide-[rgba(196,124,58,.08)] max-h-56 overflow-y-auto">
+                {parsed.map((p,i)=>(
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className="text-xs font-mono font-bold text-[#c47c3a] w-10 flex-shrink-0">{p.code}</span>
+                    <span className="flex-1 text-sm font-semibold text-[#1c1410] truncate">{p.name}</span>
+                    <span className="text-sm font-bold mono text-[#3d1f0f]">{fc(p.price)}</span>
+                    <button onClick={()=>setParsed(parsed.filter((_,j)=>j!==i))} className="text-[#6b3a22]/30 hover:text-red-500 transition"><Icon type="x" className="w-4 h-4"/></button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={()=>onImport(parsed)} className="btn-primary w-full py-3.5 text-sm">
+                ✓ Import {parsed.length} Products
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 const ProductForm=({initial,onSave})=>{
   const [f,setF]=useState({code:'',name:'',price:'',description:'',image_url:'',...(initial?{...initial,price:String(initial.price)}:{})});
   const [uploading,setUploading]=useState(false);
