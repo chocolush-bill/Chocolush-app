@@ -144,6 +144,7 @@ const Icon=({type,className="w-5 h-5"})=>{
     whatsapp:"M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z",
     track:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2",
     fire:"M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z",
+    refresh:"M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15",
     chevDown:"M19 9l-7 7-7-7",
     building:"M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
   };
@@ -510,26 +511,38 @@ const StoreApp=({onAdminLogin})=>{
   const [trackPhone,setTrackPhone]=useState('');
   const [trackOrders,setTrackOrders]=useState(null);
   const [trackLoading,setTrackLoading]=useState(false);
+  const [category, setCategory] = useState('ALL');
 
   const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(null),2000);};
   const itemCount=cart.reduce((s,i)=>s+i.qty,0);
   const cartTotal=cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const filteredProducts = products.filter(p => {
+  if (category === 'ALL') return true;
+  if (!p.code) return false;
+  return p.code.startsWith(category);
+});
+
+  const loadProducts=useCallback(async()=>{
+    try{
+      const{data,error}=await window.__sb.from('products').select('*').order('name');
+      console.log('Store loaded products:',data,error);
+      if(data&&data.length>0)setProducts(data);
+    }catch(e){console.error('Store load error:',e);}
+  },[]);
 
   useEffect(()=>{
-    const load=async()=>{
-      const{data}=await window.__sb.from('products').select('*');
-      if(data&&data.length>0)setProducts(data);
-      else setProducts([{id:'KC01',code:'KC01',name:'Big Kunafa Chocolate',price:250},{id:'KC02',code:'KC02',name:'Med. Kunafa Chocolate',price:125},{id:'KC03',code:'KC03',name:'Mini Kunafa Bites',price:40}]);
-    };
-    load();
-    // Realtime: reload products when admin makes changes
-    const ch=window.__sb.channel('store-products-rt')
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'products'},()=>load())
-      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'products'},()=>load())
-      .on('postgres_changes',{event:'DELETE',schema:'public',table:'products'},()=>load())
-      .subscribe();
-    return()=>window.__sb.removeChannel(ch);
-  },[]);
+    loadProducts();
+    // Poll every 10 seconds as reliable fallback
+    const poll=setInterval(loadProducts,10000);
+    // Also try realtime
+    const ch=window.__sb.channel('store-rt-'+Date.now())
+      .on('postgres_changes',{event:'*',schema:'public',table:'products'},payload=>{
+        console.log('Realtime event:',payload);
+        loadProducts();
+      })
+      .subscribe((status)=>console.log('Realtime status:',status));
+    return()=>{clearInterval(poll);window.__sb.removeChannel(ch);};
+  },[loadProducts]);
 
   const addToCart=p=>{setCart(prev=>{const ex=prev.find(i=>i.id===p.id);return ex?prev.map(i=>i.id===p.id?{...i,qty:i.qty+1}:i):[...prev,{...p,qty:1}];});showToast(`${p.name} added!`);};
   const changeQty=(id,qty)=>{if(qty<1)setCart(prev=>prev.filter(i=>i.id!==id));else setCart(prev=>prev.map(i=>i.id===id?{...i,qty}:i));};
@@ -553,10 +566,37 @@ const StoreApp=({onAdminLogin})=>{
     const{data}=await window.__sb.from('orders').select('*').eq('phone',trackPhone.trim()).order('created_at',{ascending:false});
     setTrackOrders(data||[]);setTrackLoading(false);
   };
-  const statusCls={pending:'s-pending',confirmed:'s-confirmed',ready:'s-ready',delivered:'s-delivered',cancelled:'s-cancelled'};
-  const statusLabel={pending:'Pending',confirmed:'Confirmed',ready:'Ready 🎉',delivered:'Delivered ✅',cancelled:'Cancelled'};
-  const EMOJIS={KC01:'🍫',KC02:'🍬',KC03:'✨'};
-  const DESCS={KC01:'Layers of crispy kunafa, rich chocolate ganache & pistachio dust.',KC02:'Perfect mid-size — kunafa crunch meets rich chocolate.',KC03:'Pop-able bites of kunafa, chocolate & joy.'};
+const statusCls = {
+  pending: 's-pending',
+  confirmed: 's-confirmed',
+  ready: 's-ready',
+  delivered: 's-delivered',
+  cancelled: 's-cancelled'
+};
+
+const statusLabel = {
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  ready: 'Ready 🎉',
+  delivered: 'Delivered ✅',
+  cancelled: 'Cancelled'
+};
+
+const getEmoji = (code) => {
+
+  if (code.startsWith('KC')) return '🍫';
+  if (code.startsWith('CP')) return '🍪';
+  if (code.startsWith('BR')) return '🧇';
+
+  return '🍽️';
+};
+
+
+const DESCS = {
+  KC01: 'Layers of crispy kunafa, rich chocolate ganache & pistachio dust.',
+  KC02: 'Perfect mid-size — kunafa crunch meets rich chocolate.',
+  KC03: 'Pop-able bites of kunafa, chocolate & joy.'
+};
 
   return(
     <div className="min-h-screen" style={{background:'var(--parchment)'}}>
@@ -568,6 +608,7 @@ const StoreApp=({onAdminLogin})=>{
           <div className="flex justify-between items-center mb-10">
             <div><h1 className="serif text-3xl font-bold text-[#f9f4ec]">Chocolush</h1><p className="text-[#c47c3a] text-xs font-semibold tracking-widest uppercase mt-0.5">Handcrafted · Kerala</p></div>
             <div className="flex gap-2">
+              <button onClick={loadProducts} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="refresh" className="w-4 h-4"/></button>
               <button onClick={()=>setShowTrack(true)} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="track" className="w-4 h-4"/>Track</button>
               <button onClick={onAdminLogin} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="lock" className="w-4 h-4"/>Admin</button>
             </div>
@@ -579,15 +620,29 @@ const StoreApp=({onAdminLogin})=>{
       </div>
       {/* Products */}
       <div className="max-w-2xl mx-auto px-5 py-8 space-y-4">
+      <div className="flex gap-2 mb-4">
+    <button onClick={() => setCategory('ALL')}>All</button>
+    <button onClick={() => setCategory('KC')}>🍫 KC</button>
+    <button onClick={() => setCategory('CP')}>🍪 CP</button>
+    <button onClick={() => setCategory('BR')}>🧇 BR</button>
+    
+  </div>
         <div className="flex justify-between items-center mb-2"><h2 className="serif text-xl font-bold text-[#1c1410]">Our Products</h2><span className="text-xs text-[#6b3a22]/50 font-semibold uppercase tracking-widest">{products.length} Items</span></div>
-        {products.map((p,i)=>{
-          const inCart=cart.find(c=>c.id===p.id);
+        {filteredProducts.map((p,i)=>{
+          const inCart=cart.find(c=>c.id===p.id);console.log("CODE:", p.code, typeof p.code);
+          
           return(
             <div key={p.id} className="product-card fade-in" style={{animationDelay:`${i*.08}s`}}>
               {/* Product image */}
-              {p.image_url&&<img src={p.image_url} alt={p.name} className="w-full h-48 object-cover"/>}
+             <img 
+  src={p.image || "https://via.placeholder.com/300"} 
+  alt={p.name} 
+  className="w-full h-48 object-cover"
+/>
               <div className="p-5 flex gap-4 items-start">
-                {!p.image_url&&<div className="w-20 h-20 rounded-2xl flex items-center justify-center flex-shrink-0" style={{background:'linear-gradient(135deg,#f2ead8,#e8d5c0)'}}><span className="text-5xl">{EMOJIS[p.code]||'🍫'}</span></div>}
+                {!p.image_url&&<div className="w-20 h-20 rounded-2xl flex items-center justify-center flex-shrink-0" style={{background:'linear-gradient(135deg,#f2ead8,#e8d5c0)'}}><span className="text-5xl">
+  {getEmoji(p.code)}
+</span></div>}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start gap-2 mb-1"><h3 className="font-bold text-base text-[#1c1410] leading-snug">{p.name}</h3><span className="text-xs font-mono font-bold text-[#6b3a22] bg-[rgba(196,124,58,.1)] px-2 py-0.5 rounded-lg flex-shrink-0">{p.code}</span></div>
                   {p.description&&<p className="text-xs text-[#6b3a22] leading-relaxed mb-2">{p.description}</p>}
