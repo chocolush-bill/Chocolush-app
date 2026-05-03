@@ -103,8 +103,8 @@ body.dark .product-card{background:rgba(26,15,6,.9);}
 const {useState,useEffect,useRef,useCallback} = React;
 
 // ─── CONFIG ───────────────────────────────────────────────
-const ADMIN_PASSWORD = "Admin@2026"; // ← change this
-const WA_NUMBER = "919539463513";       // ← your WhatsApp number
+const ADMIN_PASSWORD = "chocolush2024"; // ← change this
+const WA_NUMBER = "919876543210";       // ← your WhatsApp number
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyqafYeFD5Egz0E1MZE9X63mZvuISSH29XPujFsHHrh0rW0CJvmvdpL3cfnq9iP6OlU3Q/exec";
 
 // ─── HELPERS ──────────────────────────────────────────────
@@ -522,7 +522,12 @@ const StoreApp=({onAdminLogin})=>{
       else setProducts([{id:'KC01',code:'KC01',name:'Big Kunafa Chocolate',price:250},{id:'KC02',code:'KC02',name:'Med. Kunafa Chocolate',price:125},{id:'KC03',code:'KC03',name:'Mini Kunafa Bites',price:40}]);
     };
     load();
-    const ch=window.__sb.channel('store-products').on('postgres_changes',{event:'*',schema:'public',table:'products'},()=>load()).subscribe();
+    // Realtime: reload products when admin makes changes
+    const ch=window.__sb.channel('store-products-rt')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'products'},()=>load())
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'products'},()=>load())
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'products'},()=>load())
+      .subscribe();
     return()=>window.__sb.removeChannel(ch);
   },[]);
 
@@ -718,23 +723,37 @@ const AdminApp=({onLogout})=>{
   useEffect(()=>{document.body.classList.toggle('dark',darkMode);localStorage.setItem('choco_dark',String(darkMode));},[darkMode]);
 
   useEffect(()=>{
-    try{
-      const sc=localStorage.getItem('chocolush_customers');
-      if(sc)setCustomers(JSON.parse(sc));
-      else{const d=[{id:genId(),name:'Mr. Bake',phone:'',email:'',address:''},{id:genId(),name:'Others',phone:'',email:'',address:''}];setCustomers(d);localStorage.setItem('chocolush_customers',JSON.stringify(d));}
-      const sp=localStorage.getItem('chocolush_products');
-      if(sp)setProducts(JSON.parse(sp));
-      else{const d=[{id:genId(),code:'KC01',name:'Big Kunafa Chocolate',price:250},{id:genId(),code:'KC02',name:'Med. Kunafa Chocolate',price:125},{id:genId(),code:'KC03',name:'Mini Kunafa Bites',price:40}];setProducts(d);localStorage.setItem('chocolush_products',JSON.stringify(d));}
-      const st=localStorage.getItem('chocolush_transactions');
-      if(st)setTransactions(JSON.parse(st));
-    }catch(e){console.error(e);}
-    setLoading(false);
+    const init=async()=>{
+      try{
+        // Customers — localStorage
+        const sc=localStorage.getItem('chocolush_customers');
+        if(sc)setCustomers(JSON.parse(sc));
+        else{const d=[{id:genId(),name:'Mr. Bake',phone:'',email:'',address:''},{id:genId(),name:'Others',phone:'',email:'',address:''}];setCustomers(d);localStorage.setItem('chocolush_customers',JSON.stringify(d));}
+        // Products — Supabase is source of truth
+        const{data:sbp,error:sberr}=await window.__sb.from('products').select('*');
+        if(!sberr&&sbp&&sbp.length>0){
+          setProducts(sbp);
+          localStorage.setItem('chocolush_products',JSON.stringify(sbp));
+        } else {
+          const sp=localStorage.getItem('chocolush_products');
+          const localP=sp?JSON.parse(sp):[{id:genId(),code:'KC01',name:'Big Kunafa Chocolate',price:250,description:'',image_url:''},{id:genId(),code:'KC02',name:'Med. Kunafa Chocolate',price:125,description:'',image_url:''},{id:genId(),code:'KC03',name:'Mini Kunafa Bites',price:40,description:'',image_url:''}];
+          setProducts(localP);
+          localStorage.setItem('chocolush_products',JSON.stringify(localP));
+          for(const p of localP){await window.__sb.from('products').upsert({id:p.id,code:p.code||'',name:p.name,price:p.price,description:p.description||'',image_url:p.image_url||''});}
+        }
+        // Transactions — localStorage
+        const st=localStorage.getItem('chocolush_transactions');
+        if(st)setTransactions(JSON.parse(st));
+      }catch(e){console.error(e);}
+      setLoading(false);
+    };
+    init();
   },[]);
 
   // Sync products to Supabase
   useEffect(()=>{
     if(products.length===0)return;
-    products.forEach(p=>{window.__sb.from('products').upsert({id:p.id,code:p.code,name:p.name,price:p.price,description:p.description||'',image_url:p.image_url||''}).then(({error})=>{if(error)console.error(error);});});
+    // No bulk sync on load - products are synced individually on add/edit/delete
   },[products]);
 
   // Poll pending orders count
