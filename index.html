@@ -17,7 +17,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#1c1410;--bark:#3d1f0f;--mocha:#6b3a22;--caramel:#c47c3a;--cream:#f9f4ec;--parchment:#f2ead8;--sage:#7a8c6e;--blush:#e8d5c0;}
-*{box-sizing:border-box;margin:0;padding:0;}html,body{overflow-x:hidden;width:100%;}
+*{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'DM Sans',sans-serif;background:var(--parchment);color:var(--ink);min-height:100vh;background-image:radial-gradient(ellipse at 20% 0%,rgba(196,124,58,.08) 0%,transparent 60%),radial-gradient(ellipse at 80% 100%,rgba(61,31,15,.06) 0%,transparent 60%);}
 h1,h2,h3,.serif{font-family:'Playfair Display',serif;}
 .mono{font-family:'DM Mono',monospace;}
@@ -68,7 +68,7 @@ input[type=number]{-moz-appearance:textfield;}
 .stat-card{position:relative;overflow:hidden;}
 .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(to right,var(--mocha),var(--caramel));}
 /* Store */
-.store-hero{background:linear-gradient(135deg,var(--bark) 0%,#5a2d14 60%,var(--mocha) 100%);width:100%;overflow:hidden;}
+.store-hero{background:linear-gradient(135deg,var(--bark) 0%,#5a2d14 60%,var(--mocha) 100%);}
 .product-card{background:rgba(249,244,236,.9);border:1.5px solid rgba(196,124,58,.18);border-radius:20px;transition:all .25s ease;overflow:hidden;}
 .product-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(61,31,15,.15);border-color:var(--caramel);}
 .float-cart{position:fixed;bottom:24px;right:24px;z-index:40;width:62px;height:62px;border-radius:50%;background:var(--bark);color:var(--cream);box-shadow:0 8px 32px rgba(61,31,15,.4);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .25s ease;}
@@ -103,8 +103,8 @@ body.dark .product-card{background:rgba(26,15,6,.9);}
 const {useState,useEffect,useRef,useCallback} = React;
 
 // ─── CONFIG ───────────────────────────────────────────────
-const ADMIN_PASSWORD = "Admin@2026"; // ← change this
-const WA_NUMBER = "919539463513";       // ← your WhatsApp number
+const ADMIN_PASSWORD = "Admin2026"; // ← change this
+const WA_NUMBER = "919400667313";       // ← your WhatsApp number
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyqafYeFD5Egz0E1MZE9X63mZvuISSH29XPujFsHHrh0rW0CJvmvdpL3cfnq9iP6OlU3Q/exec";
 
 // ─── HELPERS ──────────────────────────────────────────────
@@ -511,23 +511,25 @@ const StoreApp=({onAdminLogin})=>{
   const [trackPhone,setTrackPhone]=useState('');
   const [trackOrders,setTrackOrders]=useState(null);
   const [trackLoading,setTrackLoading]=useState(false);
-  const [category, setCategory] = useState('ALL');
 
   const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(null),2000);};
   const itemCount=cart.reduce((s,i)=>s+i.qty,0);
   const cartTotal=cart.reduce((s,i)=>s+i.price*i.qty,0);
-  const filteredProducts = products.filter(p => {
-  if (category === 'ALL') return true;
-  if (!p.code) return false;
-  return p.code.startsWith(category);
-});
 
   const loadProducts=useCallback(async()=>{
     try{
-      const{data,error}=await window.__sb.from('products').select('*').order('name');
-      console.log('Store loaded products:',data,error);
-      if(data&&data.length>0)setProducts(data);
-    }catch(e){console.error('Store load error:',e);}
+      const{data,error}=await window.__sb.from('products').select('*');
+      if(!error&&data&&data.length>0){
+        setProducts(data);
+      } else {
+        // Fallback: use admin's localStorage products
+        const sp=localStorage.getItem('chocolush_products');
+        if(sp){const p=JSON.parse(sp);if(p.length>0)setProducts(p);}
+      }
+    }catch(e){
+      const sp=localStorage.getItem('chocolush_products');
+      if(sp){const p=JSON.parse(sp);if(p.length>0)setProducts(p);}
+    }
   },[]);
 
   useEffect(()=>{
@@ -566,37 +568,10 @@ const StoreApp=({onAdminLogin})=>{
     const{data}=await window.__sb.from('orders').select('*').eq('phone',trackPhone.trim()).order('created_at',{ascending:false});
     setTrackOrders(data||[]);setTrackLoading(false);
   };
-const statusCls = {
-  pending: 's-pending',
-  confirmed: 's-confirmed',
-  ready: 's-ready',
-  delivered: 's-delivered',
-  cancelled: 's-cancelled'
-};
-
-const statusLabel = {
-  pending: 'Pending',
-  confirmed: 'Confirmed',
-  ready: 'Ready 🎉',
-  delivered: 'Delivered ✅',
-  cancelled: 'Cancelled'
-};
-
-const getEmoji = (code) => {
-
-  if (code.startsWith('KC')) return '🍫';
-  if (code.startsWith('CP')) return '🍪';
-  if (code.startsWith('BR')) return '🧇';
-
-  return '🍽️';
-};
-
-
-const DESCS = {
-  KC01: 'Layers of crispy kunafa, rich chocolate ganache & pistachio dust.',
-  KC02: 'Perfect mid-size — kunafa crunch meets rich chocolate.',
-  KC03: 'Pop-able bites of kunafa, chocolate & joy.'
-};
+  const statusCls={pending:'s-pending',confirmed:'s-confirmed',ready:'s-ready',delivered:'s-delivered',cancelled:'s-cancelled'};
+  const statusLabel={pending:'Pending',confirmed:'Confirmed',ready:'Ready 🎉',delivered:'Delivered ✅',cancelled:'Cancelled'};
+  const EMOJIS={KC01:'🍫',KC02:'🍬',KC03:'✨'};
+  const DESCS={KC01:'Layers of crispy kunafa, rich chocolate ganache & pistachio dust.',KC02:'Perfect mid-size — kunafa crunch meets rich chocolate.',KC03:'Pop-able bites of kunafa, chocolate & joy.'};
 
   return(
     <div className="min-h-screen" style={{background:'var(--parchment)'}}>
@@ -605,12 +580,12 @@ const DESCS = {
       <div className="store-hero text-white relative">
         <div className="absolute inset-0 opacity-5" style={{backgroundImage:'repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)',backgroundSize:'20px 20px'}}/>
         <div className="relative z-10 max-w-2xl mx-auto px-5 py-10">
-          <div className="flex justify-between items-center mb-10 gap-2">
-            <div className="min-w-0"><h1 className="serif text-3xl font-bold text-[#f9f4ec]">Chocolush</h1><p className="text-[#c47c3a] text-xs font-semibold tracking-widest uppercase mt-0.5">Handcrafted · Kerala</p></div>
-            <div className="flex gap-1.5 flex-shrink-0">
-              <button onClick={loadProducts} className="w-9 h-9 flex items-center justify-center rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="refresh" className="w-4 h-4"/></button>
-              <button onClick={()=>setShowTrack(true)} className="flex items-center gap-1.5 px-2.5 h-9 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="track" className="w-4 h-4"/>Track</button>
-              <button onClick={onAdminLogin} className="flex items-center gap-1.5 px-2.5 h-9 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="lock" className="w-4 h-4"/>Admin</button>
+          <div className="flex justify-between items-center mb-10">
+            <div><h1 className="serif text-3xl font-bold text-[#f9f4ec]">Chocolush</h1><p className="text-[#c47c3a] text-xs font-semibold tracking-widest uppercase mt-0.5">Handcrafted · Kerala</p></div>
+            <div className="flex gap-2">
+              <button onClick={loadProducts} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="refresh" className="w-4 h-4"/></button>
+              <button onClick={()=>setShowTrack(true)} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="track" className="w-4 h-4"/>Track</button>
+              <button onClick={onAdminLogin} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition border border-white/20"><Icon type="lock" className="w-4 h-4"/>Admin</button>
             </div>
           </div>
           <p className="text-4xl font-bold leading-tight mb-3 serif">Kunafa meets<br/><em>Chocolate</em> 🍫</p>
@@ -620,29 +595,15 @@ const DESCS = {
       </div>
       {/* Products */}
       <div className="max-w-2xl mx-auto px-5 py-8 space-y-4">
-      <div className="flex gap-2 mb-4">
-    <button onClick={() => setCategory('ALL')}>All</button>
-    <button onClick={() => setCategory('KC')}>🍫 KC</button>
-    <button onClick={() => setCategory('CP')}>🍪 CP</button>
-    <button onClick={() => setCategory('BR')}>🧇 BR</button>
-    
-  </div>
         <div className="flex justify-between items-center mb-2"><h2 className="serif text-xl font-bold text-[#1c1410]">Our Products</h2><span className="text-xs text-[#6b3a22]/50 font-semibold uppercase tracking-widest">{products.length} Items</span></div>
-        {filteredProducts.map((p,i)=>{
-          const inCart=cart.find(c=>c.id===p.id);console.log("CODE:", p.code, typeof p.code);
-          
+        {products.map((p,i)=>{
+          const inCart=cart.find(c=>c.id===p.id);
           return(
             <div key={p.id} className="product-card fade-in" style={{animationDelay:`${i*.08}s`}}>
               {/* Product image */}
-             <img 
-  src={p.image || "https://via.placeholder.com/300"} 
-  alt={p.name} 
-  className="w-full h-48 object-cover"
-/>
+              {p.image_url&&<img src={p.image_url} alt={p.name} className="w-full h-48 object-cover"/>}
               <div className="p-5 flex gap-4 items-start">
-                {!p.image_url&&<div className="w-20 h-20 rounded-2xl flex items-center justify-center flex-shrink-0" style={{background:'linear-gradient(135deg,#f2ead8,#e8d5c0)'}}><span className="text-5xl">
-  {getEmoji(p.code)}
-</span></div>}
+                {!p.image_url&&<div className="w-20 h-20 rounded-2xl flex items-center justify-center flex-shrink-0" style={{background:'linear-gradient(135deg,#f2ead8,#e8d5c0)'}}><span className="text-5xl">{EMOJIS[p.code]||'🍫'}</span></div>}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start gap-2 mb-1"><h3 className="font-bold text-base text-[#1c1410] leading-snug">{p.name}</h3><span className="text-xs font-mono font-bold text-[#6b3a22] bg-[rgba(196,124,58,.1)] px-2 py-0.5 rounded-lg flex-shrink-0">{p.code}</span></div>
                   {p.description&&<p className="text-xs text-[#6b3a22] leading-relaxed mb-2">{p.description}</p>}
@@ -672,7 +633,7 @@ const DESCS = {
             {cartStep==='cart'&&<>
               <div className="sticky top-0 bg-[#f9f4ec] p-5 border-b border-[rgba(196,124,58,.12)] flex justify-between items-center"><div><h2 className="serif text-xl font-bold text-[#3d1f0f]">Your Order</h2><p className="text-xs text-[#6b3a22] font-medium">{itemCount} item{itemCount!==1?'s':''}</p></div><button onClick={()=>setShowCart(false)} className="w-8 h-8 rounded-full bg-[rgba(196,124,58,.1)] flex items-center justify-center text-[#6b3a22]"><Icon type="x" className="w-4 h-4"/></button></div>
               <div className="p-5 space-y-3">
-                {cart.map(item=><div key={item.id} className="flex items-center gap-3 p-3 rounded-2xl bg-[rgba(196,124,58,.06)] border border-[rgba(196,124,58,.12)]"><span className="text-3xl">{getEmoji(item.code||'')}</span><div className="flex-1 min-w-0"><p className="font-semibold text-sm text-[#1c1410] truncate">{item.name}</p><p className="text-xs text-[#6b3a22]">{fc(item.price)} each</p></div><div className="flex items-center gap-2"><button className="w-7 h-7 rounded-lg border border-[rgba(196,124,58,.3)] flex items-center justify-center font-bold text-[#6b3a22] hover:bg-[#3d1f0f] hover:text-white transition text-sm" onClick={()=>changeQty(item.id,item.qty-1)}>−</button><span className="w-6 text-center font-bold text-sm">{item.qty}</span><button className="w-7 h-7 rounded-lg border border-[rgba(196,124,58,.3)] flex items-center justify-center font-bold text-[#6b3a22] hover:bg-[#3d1f0f] hover:text-white transition text-sm" onClick={()=>changeQty(item.id,item.qty+1)}>+</button></div><p className="font-bold text-sm text-[#3d1f0f] w-14 text-right mono">{fc(item.price*item.qty)}</p></div>)}
+                {cart.map(item=><div key={item.id} className="flex items-center gap-3 p-3 rounded-2xl bg-[rgba(196,124,58,.06)] border border-[rgba(196,124,58,.12)]"><span className="text-3xl">{EMOJIS[item.code]||'🍫'}</span><div className="flex-1 min-w-0"><p className="font-semibold text-sm text-[#1c1410] truncate">{item.name}</p><p className="text-xs text-[#6b3a22]">{fc(item.price)} each</p></div><div className="flex items-center gap-2"><button className="w-7 h-7 rounded-lg border border-[rgba(196,124,58,.3)] flex items-center justify-center font-bold text-[#6b3a22] hover:bg-[#3d1f0f] hover:text-white transition text-sm" onClick={()=>changeQty(item.id,item.qty-1)}>−</button><span className="w-6 text-center font-bold text-sm">{item.qty}</span><button className="w-7 h-7 rounded-lg border border-[rgba(196,124,58,.3)] flex items-center justify-center font-bold text-[#6b3a22] hover:bg-[#3d1f0f] hover:text-white transition text-sm" onClick={()=>changeQty(item.id,item.qty+1)}>+</button></div><p className="font-bold text-sm text-[#3d1f0f] w-14 text-right mono">{fc(item.price*item.qty)}</p></div>)}
                 <hr className="rule"/>
                 <div className="flex justify-between items-center px-1"><span className="font-semibold text-[#6b3a22]">Total</span><span className="text-2xl font-bold serif">{fc(cartTotal)}</span></div>
                 <button onClick={()=>setCartStep('details')} className="btn-primary w-full py-4 text-base">Continue to Details →</button>
@@ -778,31 +739,18 @@ const AdminApp=({onLogout})=>{
   useEffect(()=>{document.body.classList.toggle('dark',darkMode);localStorage.setItem('choco_dark',String(darkMode));},[darkMode]);
 
   useEffect(()=>{
-    const init=async()=>{
-      try{
-        // Customers — localStorage
-        const sc=localStorage.getItem('chocolush_customers');
-        if(sc)setCustomers(JSON.parse(sc));
-        else{const d=[{id:genId(),name:'Mr. Bake',phone:'',email:'',address:''},{id:genId(),name:'Others',phone:'',email:'',address:''}];setCustomers(d);localStorage.setItem('chocolush_customers',JSON.stringify(d));}
-        // Products — Supabase is source of truth
-        const{data:sbp,error:sberr}=await window.__sb.from('products').select('*');
-        if(!sberr&&sbp&&sbp.length>0){
-          setProducts(sbp);
-          localStorage.setItem('chocolush_products',JSON.stringify(sbp));
-        } else {
-          const sp=localStorage.getItem('chocolush_products');
-          const localP=sp?JSON.parse(sp):[{id:genId(),code:'KC01',name:'Big Kunafa Chocolate',price:250,description:'',image_url:''},{id:genId(),code:'KC02',name:'Med. Kunafa Chocolate',price:125,description:'',image_url:''},{id:genId(),code:'KC03',name:'Mini Kunafa Bites',price:40,description:'',image_url:''}];
-          setProducts(localP);
-          localStorage.setItem('chocolush_products',JSON.stringify(localP));
-          for(const p of localP){await window.__sb.from('products').upsert({id:p.id,code:p.code||'',name:p.name,price:p.price,description:p.description||'',image_url:p.image_url||''});}
-        }
-        // Transactions — localStorage
-        const st=localStorage.getItem('chocolush_transactions');
-        if(st)setTransactions(JSON.parse(st));
-      }catch(e){console.error(e);}
-      setLoading(false);
-    };
-    init();
+    // localStorage is ALWAYS source of truth for admin
+    try{
+      const sc=localStorage.getItem('chocolush_customers');
+      if(sc)setCustomers(JSON.parse(sc));
+      else{const d=[{id:genId(),name:'Mr. Bake',phone:'',email:'',address:''},{id:genId(),name:'Others',phone:'',email:'',address:''}];setCustomers(d);localStorage.setItem('chocolush_customers',JSON.stringify(d));}
+      const sp=localStorage.getItem('chocolush_products');
+      if(sp){setProducts(JSON.parse(sp));}
+      else{const d=[{id:genId(),code:'KC01',name:'Big Kunafa Chocolate',price:250,description:'',image_url:''},{id:genId(),code:'KC02',name:'Med. Kunafa Chocolate',price:125,description:'',image_url:''},{id:genId(),code:'KC03',name:'Mini Kunafa Bites',price:40,description:'',image_url:''}];setProducts(d);localStorage.setItem('chocolush_products',JSON.stringify(d));}
+      const st=localStorage.getItem('chocolush_transactions');
+      if(st)setTransactions(JSON.parse(st));
+    }catch(e){console.error(e);}
+    setLoading(false);
   },[]);
 
   // Sync products to Supabase
@@ -824,24 +772,31 @@ const AdminApp=({onLogout})=>{
   const addCustomer=c=>{saveCustomers([...customers,{...c,id:genId()}]);setShowCustomerModal(false);setEditingCustomer(null);};
   const updateCustomer=c=>{saveCustomers(customers.map(x=>x.id===c.id?c:x));setShowCustomerModal(false);setEditingCustomer(null);};
   const deleteCustomer=id=>{if(!window.confirm('Delete?'))return;saveCustomers(customers.filter(c=>c.id!==id));};
+  const syncProductToSupabase=async(p)=>{
+    try{
+      const row={id:String(p.id),code:p.code||'',name:p.name,price:parseFloat(p.price)||0,description:p.description||'',image_url:p.image_url||''};
+      const{error}=await window.__sb.from('products').upsert(row,{onConflict:'id'});
+      if(error){console.error('Supabase sync error:',error);showToast('Saved locally. Sync error: '+error.message,'error');}
+    }catch(e){console.error('Sync failed:',e);showToast('Saved locally. Store sync failed.','error');}
+  };
   const addProduct=async p=>{
     const np={...p,id:genId()};
     saveProducts([...products,np]);
-    await window.__sb.from('products').upsert({id:np.id,code:np.code,name:np.name,price:np.price,description:np.description||'',image_url:np.image_url||''});
     setShowProductModal(false);setEditingProduct(null);
-    showToast('Product added to store!');
+    showToast('Product added!');
+    await syncProductToSupabase(np);
   };
   const updateProduct=async p=>{
     saveProducts(products.map(x=>x.id===p.id?p:x));
-    await window.__sb.from('products').upsert({id:p.id,code:p.code,name:p.name,price:p.price,description:p.description||'',image_url:p.image_url||''});
     setShowProductModal(false);setEditingProduct(null);
     showToast('Product updated!');
+    await syncProductToSupabase(p);
   };
   const deleteProduct=async id=>{
     if(!window.confirm('Delete this product from billing AND store?'))return;
     saveProducts(products.filter(p=>p.id!==id));
-    await window.__sb.from('products').delete().eq('id',id);
     showToast('Product deleted.','info');
+    try{await window.__sb.from('products').delete().eq('id',String(id));}catch(e){console.error(e);}
   };
 
   const addToBill=product=>{
